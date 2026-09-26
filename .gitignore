@@ -219,6 +219,7 @@ __marimo__/
 
 # trailmind: derived/generated corpus artifacts (regenerate via scripts/chunk_corpus.py)
 agent/corpus_chunks/
+agent/corpus_embeddings/
 
 # Node / Next.js
 node_modules/
