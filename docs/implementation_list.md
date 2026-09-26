@@ -18,18 +18,18 @@
 8. Add reranking (bge-reranker-base or LLM call, top 20 → top 5)
 9. ✅ Wrap retrieval as `search_destination_knowledge(destination, query)` tool
    — `agent/app/tools.py`; raises `UnknownDestinationError` for out-of-scope destinations, propagates typed embedding/DB errors unwrapped
-10. Stand up Python/FastAPI service with single agent + this tool
-    — FastAPI service scaffolded with a `/health` endpoint only (`agent/app/main.py`); no agent/tool wiring yet
+10. ✅ Stand up Python/FastAPI service with single agent + this tool
+    — `POST /chat` wired to `agent/app/agent.py::run_agent()`; LLM is local via Ollama (`gemma4:latest`, `agent/app/llm.py`), pluggable for Claude API later. Verified end-to-end: correctly grounds answers in retrieved chunks, and declines out-of-scope destinations (e.g. Bali) instead of hallucinating.
 11. Build barebones Next.js chat UI, wire to FastAPI (unstyled OK)
 12. ✅ Write CLAUDE.md into repo
 13. Write 15-20 eval questions for Da Nang/Hoi An (known-good answers)
 14. Score: retrieval quality (right chunk top-5?), answer quality, hallucination rate
 
-**Checkpoint:** reasoning loop works end to end, no persistence yet.
-**Next up: step 10 (wire the tool into a real single-agent FastAPI
-loop). Step 8 (reranking) still deferred — retrieval quality
-spot-checked manually has been accurate without it; revisit once eval
-scores (step 13/14) show it's actually needed.**
+**Checkpoint:** ✅ reasoning loop works end to end, no persistence yet.
+**Next up: step 11 (Next.js chat UI) or step 13 (eval questions) —
+the reasoning loop itself is done and verified manually. Step 8
+(reranking) still deferred until eval scores show it's actually
+needed.**
 
 ## v1: Add tools + persistence
 15. Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`

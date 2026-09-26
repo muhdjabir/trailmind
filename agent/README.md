@@ -42,3 +42,27 @@ python scripts/load_chunks_to_pg.py
 See `corpus/README.md` for details on each step. `DATABASE_URL`
 defaults to the local docker-compose credentials; override it via
 env var for anything else (e.g. Supabase later).
+
+## Agent
+
+The chat loop lives in `app/agent.py::run_agent()`, wired up at
+`POST /chat` (`{"message": "..."}` -> `{"reply": "..."}`). It's a
+single-agent tool-calling loop over `search_destination_knowledge`:
+the LLM decides when to call the tool, the tool result is fed back
+into the conversation, and the LLM's next turn produces the final
+answer (or explains an error/out-of-scope destination itself, rather
+than the code hard-coding a response).
+
+LLM backend is pluggable via the `app.llm.LLMClient` protocol.
+`OllamaLLMClient` (default, `gemma4:latest`) is the only
+implementation for now — local, no API key/cost, same server as
+embeddings. An `AnthropicLLMClient` can be added later against the
+same interface without touching `agent.py`.
+
+```
+ollama pull gemma4          # once
+docker compose up -d        # pgvector
+uvicorn app.main:app --reload
+curl -X POST localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"message": "best tailor shops in Hoi An?"}'
+```
