@@ -1,22 +1,34 @@
 # trailmind — Implementation List
 
 ## v0: Single agent + RAG tool
-1. Assemble Da Nang/Hoi An corpus (5-10 blog/guide posts, relevant subreddit threads, tourism board pages, Wikivoyage)
-2. Hand-chunk 2-3 docs manually to calibrate chunk quality (semantic-unit-first, not fixed-size)
-3. Automate chunking based on calibration
-4. Generate embeddings (text-embedding-3-small or bge-small-en local)
-5. Stand up vector store (pgvector or FAISS) with metadata (source URL, destination, doc type)
-6. Implement naive top-k retrieval
-7. Add metadata filtering (destination) before vector search
+1. ✅ Assemble Da Nang/Hoi An corpus (5-10 blog/guide posts, relevant subreddit threads, tourism board pages, Wikivoyage)
+   — 6 docs fetched (2 Wikivoyage + 4 blogs); Reddit threads skipped for now (scraping blocked, see `agent/scripts/fetch_corpus.py` notes)
+2. ✅ Hand-chunk 2-3 docs manually to calibrate chunk quality (semantic-unit-first, not fixed-size)
+   — see `agent/corpus/_calibration/`
+3. ✅ Automate chunking based on calibration
+   — `agent/app/chunking.py` + `agent/scripts/chunk_corpus.py`
+4. ✅ Generate embeddings (text-embedding-3-small or bge-small-en local)
+   — used `nomic-embed-text` via local Ollama instead (no API key/cost); `agent/app/embeddings.py`
+5. ✅ Stand up vector store (pgvector or FAISS) with metadata (source URL, destination, doc type)
+   — pgvector via `docker-compose.yml`, schema in `database/schema.sql`
+6. ✅ Implement naive top-k retrieval
+   — `agent/app/retrieval.py::retrieve()`
+7. ✅ Add metadata filtering (destination) before vector search
+   — done as part of step 5/6: `search()` filters by `destination` in the same query
 8. Add reranking (bge-reranker-base or LLM call, top 20 → top 5)
 9. Wrap retrieval as `search_destination_knowledge(destination, query)` tool
 10. Stand up Python/FastAPI service with single agent + this tool
+    — FastAPI service scaffolded with a `/health` endpoint only (`agent/app/main.py`); no agent/tool wiring yet
 11. Build barebones Next.js chat UI, wire to FastAPI (unstyled OK)
-12. Write CLAUDE.md into repo
+12. ✅ Write CLAUDE.md into repo
 13. Write 15-20 eval questions for Da Nang/Hoi An (known-good answers)
 14. Score: retrieval quality (right chunk top-5?), answer quality, hallucination rate
 
 **Checkpoint:** reasoning loop works end to end, no persistence yet.
+**Next up: step 8 (reranking) or step 9 (wrap as tool) — retrieval quality
+so far (spot-checked manually) has been accurate without reranking, so
+step 9 may be worth doing first to get an end-to-end agent loop working,
+then revisit step 8 if eval scores (step 13/14) show it's needed.**
 
 ## v1: Add tools + persistence
 15. Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`
