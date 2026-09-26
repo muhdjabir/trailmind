@@ -53,3 +53,20 @@ Upserts `corpus_embeddings/` into the `chunks` table (unique on
 Query it with `app.vector_store.search(conn, query_embedding,
 destination=...)`, which does cosine-distance nearest-neighbor with
 optional metadata filtering by destination.
+
+## The tool: `search_destination_knowledge`
+
+```python
+from app.tools import search_destination_knowledge
+
+snippets = search_destination_knowledge("da_nang_hoi_an", "best tailor shops", top_k=5)
+```
+
+This is the `search_destination_knowledge(destination, query)` tool
+from CLAUDE.md — embeds the query, searches the vector store scoped
+to `destination`, and returns a ranked list of `Snippet(rank, text,
+source_url, section_path, distance)`. Raises `UnknownDestinationError`
+for a destination outside `app.destinations.KNOWN_DESTINATIONS`
+(never a silent empty result); embedding/DB failures raise the typed
+errors from `app.embeddings` / `app.vector_store` unwrapped, per
+CLAUDE.md's tool error-handling convention.

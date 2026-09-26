@@ -21,14 +21,11 @@ from pathlib import Path
 import trafilatura
 import yaml
 
-CORPUS_ROOT = Path(__file__).resolve().parent.parent / "corpus"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-KNOWN_DESTINATIONS = {
-    "da_nang_hoi_an",
-    "bangkok",
-    "almaty",
-    "tokyo_fuji_hiroshima",
-}
+from app.destinations import KNOWN_DESTINATIONS
+
+CORPUS_ROOT = Path(__file__).resolve().parent.parent / "corpus"
 
 
 def slugify(text: str, max_len: int = 60) -> str:
