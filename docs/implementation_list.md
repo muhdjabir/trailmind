@@ -22,7 +22,21 @@
     — `POST /chat` wired to `agent/app/agent.py::run_agent()`; LLM is local via Ollama (`gemma4:latest`, `agent/app/llm.py`), pluggable for Claude API later. Verified end-to-end: correctly grounds answers in retrieved chunks, and declines out-of-scope destinations (e.g. Bali) instead of hallucinating.
 11. ✅ Build barebones Next.js chat UI, wire to FastAPI (unstyled OK)
     — `web/app/page.tsx`; single-turn per message (no server-side chat history yet). Verified end-to-end in a real browser via CORS-enabled `POST /chat`.
-11a. Update the chat UI to match the "Trip Planner Chat v2" design mockup (desktop, "1a" variant)
+11a. ✅ Update the chat UI to match the "Trip Planner Chat v2" design mockup (desktop, "1a" variant)
+    — Implemented from screenshots (the `claude_design` MCP referenced below wasn't
+    available in this session - only a design-*system* sync tool was, which is
+    explicitly scoped to a different workflow). `web/app/components/Sidebar.tsx`
+    and `ItineraryPanel.tsx` are static demo chrome matching the mockup's sample
+    "Lisbon & Porto" trip (trip list, budget header, day-by-day itinerary,
+    hotel/stat cards - none of it wired to real data, since trip persistence is
+    v1). The real, live piece is the center chat column: message list + input,
+    restyled to match (dark bubble for user, red-dot avatar + markdown for
+    assistant), still wired to the actual `POST /chat` backend. The mockup's
+    3 suggestion chips are real and functional (they send their exact text).
+    Verified end-to-end in a real browser: asked a real question through the
+    new UI and got the same grounded, markdown-formatted answer as before;
+    asked an out-of-scope one ("Porto") and got the correct honest refusal
+    rendered in the new bubble style. Clean `next build` + `eslint`.
     — Mockup: Claude Design project at
     `https://claude.ai/design/p/77e572c5-2f7b-496f-b1c0-bc03235c2c17?file=Trip+Planner+Chat+v2.dc.html`.
     Import via the `claude_design` MCP (`https://api.anthropic.com/v1/design/mcp`,
