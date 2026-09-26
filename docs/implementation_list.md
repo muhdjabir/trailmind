@@ -53,6 +53,18 @@ needed.**
 
 **Checkpoint:** handoff works; one agent's failure doesn't corrupt the other's output.
 
+## Considered for later (not scheduled)
+- **Web search for uncovered destinations.** Discussed and deliberately
+  deferred: the RAG pipeline's value is the curated, calibrated corpus
+  (controlled hallucination risk, reproducible answers you can write
+  eval questions against per step 13/14) — live web search reintroduces
+  the noise that corpus curation filtered out, plus cost/latency and
+  non-reproducible results. If added, do it as a separate tool (e.g.
+  `search_web(query)`) that the agent reaches for only when a
+  destination isn't in `KNOWN_DESTINATIONS`, not blended into
+  `search_destination_knowledge` — keep curated vs. live-web answers
+  clearly separated rather than silently mixed.
+
 ## Conventions (see CLAUDE.md)
 - pytest for Python tests
 - Commits: `feat:` / `chore:` / `fix:`, kept short
