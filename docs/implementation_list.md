@@ -22,6 +22,19 @@
     — `POST /chat` wired to `agent/app/agent.py::run_agent()`; LLM is local via Ollama (`gemma4:latest`, `agent/app/llm.py`), pluggable for Claude API later. Verified end-to-end: correctly grounds answers in retrieved chunks, and declines out-of-scope destinations (e.g. Bali) instead of hallucinating.
 11. ✅ Build barebones Next.js chat UI, wire to FastAPI (unstyled OK)
     — `web/app/page.tsx`; single-turn per message (no server-side chat history yet). Verified end-to-end in a real browser via CORS-enabled `POST /chat`.
+11a. Update the chat UI to match the "Trip Planner Chat v2" design mockup (desktop, "1a" variant)
+    — Mockup: Claude Design project at
+    `https://claude.ai/design/p/77e572c5-2f7b-496f-b1c0-bc03235c2c17?file=Trip+Planner+Chat+v2.dc.html`.
+    Import via the `claude_design` MCP (`https://api.anthropic.com/v1/design/mcp`,
+    auth via `/design-login`). Primary file: `Trip Planner Chat v2.dc.html`;
+    also read `_ds/modernist-471ec598-5fe0-4a6a-90e1-90b7245dcca1/_ds_bundle.js`,
+    `_ds/modernist-471ec598-5fe0-4a6a-90e1-90b7245dcca1/styles.css`, and
+    `support.js`, which it imports.
+    Scope: desktop version only for now ("1a").
+    Caveat: the agent's responses are still naive (plain markdown text,
+    no structured itinerary/day-by-day data) — where the mockup implies
+    UI elements the backend doesn't produce data for yet, note the gap
+    rather than inventing fake data to fill it.
 12. ✅ Write CLAUDE.md into repo
 13. ✅ Write 15-20 eval questions for Da Nang/Hoi An (known-good answers)
     — `agent/eval/questions.yaml`, 20 questions across transport/food/shopping/accommodation/activities/nightlife/safety/money/practical/culture, plus 2 adversarial (out-of-scope destination, known-but-empty destination) and 2 that deliberately hit real cross-source inconsistencies in the corpus. (An informal spot-check while writing this had a bug in its own ad-hoc scoring and wrongly suggested a retrieval gap - see step 14, the real harness found 18/18 file-level retrieval hits.)
@@ -38,7 +51,9 @@
 **Checkpoint:** ✅ v0 core loop done and scored. Both real findings above
 are unresolved — worth fixing before or alongside step 8 (reranking),
 since reranking wouldn't fix either one (one's a prompting/tool-result
-issue, the other's a metadata granularity issue).
+issue, the other's a metadata granularity issue). Step 11a (UI mockup)
+is a separate, presentation-only track that can happen independently
+of the retrieval/hallucination fixes.
 
 ## v1: Add tools + persistence
 15. Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`
