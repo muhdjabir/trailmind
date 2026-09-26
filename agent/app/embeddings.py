@@ -6,10 +6,15 @@ Model: nomic-embed-text (pulled locally, no API key/cost). Ollama's
 
 from __future__ import annotations
 
+import os
+
 import requests
 
 DEFAULT_MODEL = "nomic-embed-text"
-DEFAULT_BASE_URL = "http://localhost:11434"
+# Overridable via env: containerized (docker compose) runs need
+# host.docker.internal since Ollama runs natively on the host, not
+# in a container.
+DEFAULT_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 class EmbeddingError(Exception):

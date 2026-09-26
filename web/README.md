@@ -4,7 +4,12 @@ Barebones Next.js chat UI (presentation only — see [CLAUDE.md](../CLAUDE.md)).
 Talks to the FastAPI service's `POST /chat`; no chat history is kept
 server-side, so each message is a fresh, independent question for now.
 
-## Setup
+## Quickest way to run everything
+
+See the repo-root [README.md](../README.md) — `docker compose up -d --build`
+starts this alongside Postgres and the FastAPI service.
+
+## Setup (standalone)
 
 ```
 npm install

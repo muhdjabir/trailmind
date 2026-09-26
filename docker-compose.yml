@@ -17,5 +17,40 @@ services:
       timeout: 5s
       retries: 10
 
+  agent:
+    build: ./agent
+    container_name: trailmind-agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://trailmind:trailmind@postgres:5432/trailmind
+      # Ollama runs natively on the host, not in a container - reach it
+      # via Docker's host gateway (extra_hosts below covers Linux too).
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Whole agent/ so scripts/ and corpus data are runnable via
+      # `docker compose exec agent ...`, not just the running service's
+      # own app/ code.
+      - ./agent:/app
+
+  web:
+    build: ./web
+    container_name: trailmind-web
+    depends_on:
+      - agent
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+
 volumes:
   trailmind-pg-data:

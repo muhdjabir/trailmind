@@ -8,6 +8,7 @@ app/agent.py - that's the seam this interface exists for.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -15,7 +16,7 @@ import requests
 
 from app.embeddings import DEFAULT_BASE_URL
 
-DEFAULT_CHAT_MODEL = "gemma4:latest"
+DEFAULT_CHAT_MODEL = os.environ.get("OLLAMA_CHAT_MODEL", "gemma4:latest")
 
 
 class LLMError(Exception):

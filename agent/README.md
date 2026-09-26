@@ -2,6 +2,12 @@
 
 Python/FastAPI service: orchestration + RAG (see [CLAUDE.md](../CLAUDE.md)).
 
+## Quickest way to run everything (Postgres + this service + web UI)
+
+See the repo-root [README.md](../README.md) — `docker compose up -d --build`.
+The rest of this file covers running things individually, which is
+what you want for editing Python and running `pytest`.
+
 ## Setup
 
 ```
@@ -40,8 +46,10 @@ python scripts/load_chunks_to_pg.py
 ```
 
 See `corpus/README.md` for details on each step. `DATABASE_URL`
-defaults to the local docker-compose credentials; override it via
-env var for anything else (e.g. Supabase later).
+defaults to the local docker-compose credentials (`127.0.0.1`); inside
+the `agent` container it's set to use the `postgres` service name
+instead — override either via env var for anything else (e.g.
+Supabase later).
 
 ## Agent
 
@@ -54,10 +62,11 @@ answer (or explains an error/out-of-scope destination itself, rather
 than the code hard-coding a response).
 
 LLM backend is pluggable via the `app.llm.LLMClient` protocol.
-`OllamaLLMClient` (default, `gemma4:latest`) is the only
-implementation for now — local, no API key/cost, same server as
-embeddings. An `AnthropicLLMClient` can be added later against the
-same interface without touching `agent.py`.
+`OllamaLLMClient` (default, `gemma4:latest`, overridable via
+`OLLAMA_CHAT_MODEL`) is the only implementation for now — local, no
+API key/cost, same server as embeddings (`OLLAMA_BASE_URL`, default
+`http://localhost:11434`). An `AnthropicLLMClient` can be added later
+against the same interface without touching `agent.py`.
 
 ```
 ollama pull gemma4          # once
