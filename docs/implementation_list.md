@@ -23,14 +23,14 @@
 11. ✅ Build barebones Next.js chat UI, wire to FastAPI (unstyled OK)
     — `web/app/page.tsx`; single-turn per message (no server-side chat history yet). Verified end-to-end in a real browser via CORS-enabled `POST /chat`.
 12. ✅ Write CLAUDE.md into repo
-13. Write 15-20 eval questions for Da Nang/Hoi An (known-good answers)
+13. ✅ Write 15-20 eval questions for Da Nang/Hoi An (known-good answers)
+    — `agent/eval/questions.yaml`, 20 questions across transport/food/shopping/accommodation/activities/nightlife/safety/money/practical/culture, plus 2 adversarial (out-of-scope destination, known-but-empty destination) and 2 that deliberately hit real cross-source inconsistencies in the corpus. Spot-checked retrieval against the live corpus while writing — surfaced a real gap (q08's best-matching chunk didn't make top-5 for that phrasing), which is exactly the kind of signal step 14 scoring should catch systematically.
 14. Score: retrieval quality (right chunk top-5?), answer quality, hallucination rate
 
 **Checkpoint:** ✅ reasoning loop works end to end, no persistence yet.
-**Next up: step 13 (eval questions) — everything else in v0 except
-reranking is done and verified manually/in-browser. Step 8
-(reranking) still deferred until eval scores show it's actually
-needed.**
+**Next up: step 14 (build the scoring harness against
+`agent/eval/questions.yaml`) — that's what will tell us whether step 8
+(reranking) is actually needed, rather than guessing.**
 
 ## v1: Add tools + persistence
 15. Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`

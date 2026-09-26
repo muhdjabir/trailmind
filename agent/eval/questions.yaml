@@ -1,0 +1,252 @@
+# Eval questions for v0 step 13/14 (see docs/implementation_list.md).
+#
+# Each entry supports the three scoring axes from step 14:
+#   - retrieval quality: does a chunk from `expected_source_files` show up
+#     in the tool's top-5 results for this question?
+#   - answer quality: does the final answer mention the facts in `key_facts`?
+#   - hallucination rate: for `must_not_invent` entries, does the answer
+#     avoid specifics that aren't actually in the corpus?
+#
+# `notes` flags cases worth extra attention: corpus inconsistencies
+# between sources, or deliberately adversarial questions.
+
+- id: q01
+  category: transport
+  destination: da_nang_hoi_an
+  question: How do I get from Da Nang airport to Hoi An?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - taxi costs roughly 300,000-500,000 dong
+    - shuttle bus costs about 130,000 dong per person
+    - the trip takes about 45 minutes
+
+- id: q02
+  category: transport
+  destination: da_nang_hoi_an
+  question: Can I get around Hoi An Old Town by car?
+  expected_source_files:
+    - the-ultimate-guide-to-visit-hoi-an-2025-the-midnight-blue-el.md
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - cars are not allowed in Old Town
+    - walking is the best way to get around
+    - motorbikes are restricted at certain times / don't reach everywhere
+
+- id: q03
+  category: food
+  destination: da_nang_hoi_an
+  question: What dishes is Hoi An particularly known for?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - Banh Xeo (crispy pancake)
+    - Cao Lau
+    - Mi Quang
+    - White Rose dumplings (Banh Bao Banh Vac)
+
+- id: q04
+  category: food
+  destination: da_nang_hoi_an
+  question: Where can I get a good cheap banh mi in Hoi An?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - Madam Khanh, "The Banh Mi Queen"
+    - located at 115 Tran Cao Van
+    - around 25,000-30,000 dong
+
+- id: q05
+  category: food
+  destination: da_nang_hoi_an
+  question: What's a famous noodle soup to try in Da Nang?
+  expected_source_files:
+    - practical-da-nang-travel-guide-2025-the-midnight-blue-elepha.md
+  key_facts:
+    - bun cha ca (fishcake noodle soup)
+    - Bún chả cá 109 is a recommended spot
+
+- id: q06
+  category: shopping
+  destination: da_nang_hoi_an
+  question: What are good tailor shops in Hoi An, and what should I watch out for?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - Nathan Tailors (127 Tran Hung Dao Street)
+    - suits from about US$129
+    - avoid Yaly's and Be Be as tourist traps / commission-driven recommendations
+    - a deposit of about 25% is usually required
+  notes: >
+    Corpus tension: the-ultimate-guide-to-visit-hoi-an blog recommends
+    Yaly as "one of the best tailors," while the Wikivoyage doc calls it
+    a tourist trap. Good check for whether the agent notices/handles
+    conflicting sources rather than blending them uncritically.
+
+- id: q07
+  category: accommodation
+  destination: da_nang_hoi_an
+  question: What's a good budget place to stay in Hoi An?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - Melody Boutique Villa (dorms from 90,000 dong)
+    - Hoang Trinh Hotel
+    - free or cheap bicycles included
+
+- id: q08
+  category: accommodation
+  destination: da_nang_hoi_an
+  question: Which area of Da Nang is best for a first-time visitor to stay in?
+  expected_source_files:
+    - da-nang-travel-guide-with-top-things-to-do-in-2026.md
+  key_facts:
+    - An Thuong Tourist Area / My An Beach
+    - walkable, close to the beach, lots of restaurants/bars
+
+- id: q09
+  category: activities
+  destination: da_nang_hoi_an
+  question: What are the best day trips from Hoi An?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+    - the-ultimate-guide-to-visit-hoi-an-2025-the-midnight-blue-el.md
+  key_facts:
+    - My Son Sanctuary (Hindu temple ruins)
+    - Cham Islands
+    - Marble Mountains
+
+- id: q10
+  category: activities
+  destination: da_nang_hoi_an
+  question: How much does it cost to visit the Marble Mountains and use the elevator?
+  expected_source_files:
+    - da-nang-travel-guide-at-wikivoyage.md
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - entry is around 40,000 dong
+    - elevator costs about 15,000 dong
+
+- id: q11
+  category: activities
+  destination: da_nang_hoi_an
+  question: What's Lady Buddha and how do I get there from Da Nang?
+  expected_source_files:
+    - da-nang-travel-guide-with-top-things-to-do-in-2026.md
+  key_facts:
+    - tallest Buddha statue in Vietnam (67 meters)
+    - located on Son Tra Peninsula
+    - a Grab taxi costs about $6 from Da Nang city center
+
+- id: q12
+  category: nightlife
+  destination: da_nang_hoi_an
+  question: Where can I get a drink in Hoi An in the evening?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - BB Lounge on An Hoi islet
+    - Dive Bar Restaurant
+    - Hoi An isn't much of a big nightlife destination overall
+
+- id: q13
+  category: safety
+  destination: da_nang_hoi_an
+  question: Does Hoi An flood? When should I be careful?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - Hoi An regularly floods in November
+    - book ahead if visiting during flood season
+
+- id: q14
+  category: money
+  destination: da_nang_hoi_an
+  question: Where can I withdraw cash without ATM fees in Hoi An?
+  expected_source_files:
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - VP Bank and TP Bank don't charge fees
+    - gold shops near the market are good for changing money
+
+- id: q15
+  category: practical
+  destination: da_nang_hoi_an
+  question: How do I get a SIM card in Da Nang?
+  expected_source_files:
+    - practical-da-nang-travel-guide-2025-the-midnight-blue-elepha.md
+  key_facts:
+    - available right at Da Nang airport
+    - Viettel is a recommended operator
+    - an Airalo eSIM is a safer alternative to avoid scam SIMs
+
+- id: q16
+  category: culture
+  destination: da_nang_hoi_an
+  question: Why are so many buildings in Hoi An painted yellow?
+  expected_source_files:
+    - the-ultimate-guide-to-visit-hoi-an-2025-the-midnight-blue-el.md
+    - hoi-an-a-complete-travel-guide-to-the-prettiest-town-in-viet.md
+  key_facts:
+    - yellow is associated with royalty/luck or prosperity/happiness/harmony
+    - yellow also absorbs less heat, practical for the climate
+  notes: >
+    Corpus tension: the two blogs give slightly different symbolic
+    reasons (royalty/luck vs. prosperity/happiness/harmony). Either
+    is an acceptable answer; watch for the agent inventing a third,
+    unsupported explanation instead of using what's actually there.
+
+- id: q17
+  category: activities
+  destination: da_nang_hoi_an
+  question: What is Ba Na Hills / the Golden Bridge, and how far is it from Da Nang?
+  expected_source_files:
+    - da-nang-travel-guide-at-wikivoyage.md
+    - da-nang-travel-guide-with-top-things-to-do-in-2026.md
+  key_facts:
+    - about 40 km from Da Nang
+    - the Golden Bridge has giant hand sculptures holding it up
+    - reached by cable car
+
+- id: q18
+  category: adversarial-out-of-scope
+  destination: bali
+  question: What is the best beach in Bali?
+  expected_source_files: []
+  key_facts: []
+  must_not_invent:
+    - any specific Bali beach name, price, or recommendation
+  notes: >
+    Bali is not in KNOWN_DESTINATIONS at all. Correct behavior:
+    search_destination_knowledge raises UnknownDestinationError before
+    any retrieval happens, and the agent says plainly it doesn't cover
+    Bali rather than answering from general knowledge.
+
+- id: q19
+  category: adversarial-empty-corpus
+  destination: bangkok
+  question: What's the best street food in Bangkok?
+  expected_source_files: []
+  key_facts: []
+  must_not_invent:
+    - specific Bangkok street food stall names, prices, or addresses
+  notes: >
+    Bangkok IS in KNOWN_DESTINATIONS but has no corpus data loaded yet
+    (v0 only covers da_nang_hoi_an so far - see implementation_list.md
+    step 23). search_destination_knowledge won't error, but will return
+    zero snippets. Correct behavior: the agent admits it doesn't have
+    specific info rather than inventing plausible-sounding details from
+    its own pretraining - this is the sharper hallucination test since
+    there's no explicit error to lean on.
+
+- id: q20
+  category: cross-source
+  destination: da_nang_hoi_an
+  question: What's the deal with tailoring in Hoi An - is it actually cheap?
+  expected_source_files:
+    - the-ultimate-guide-to-visit-hoi-an-2025-the-midnight-blue-el.md
+    - hoi-an-travel-guide-at-wikivoyage.md
+  key_facts:
+    - Hoi An has a long history/reputation as a tailoring hub
+    - prices are no longer as rock-bottom as they used to be
+    - quality is generally described as good
