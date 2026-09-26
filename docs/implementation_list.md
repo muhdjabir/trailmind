@@ -71,16 +71,41 @@ of the retrieval/hallucination fixes.
 
 ## v1: Add tools + persistence
 15. Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`
+    — needs to support multiple named trips per user (not just one), with
+    metadata beyond the itinerary itself: name, dates, party size, status
+    (e.g. "Draft itinerary"), and budget totals (planned vs. total) — see
+    the sidebar trip list + header in the step 11a mockup.
+15a. Trip CRUD: create/list/switch between a user's trips
+    — backs the sidebar's trip list and "New trip" button (currently
+    static demo chrome, see step 11a).
 16. Wire trip state read/write into agent context (compact summary per turn, not full history)
+    — also needs the chat *history* itself persisted per trip (today
+    every message is independent - see `agent/app/agent.py::run_agent()`),
+    not just the derived trip-state summary.
 17. Implement `get_weather(dest, dates)`
 18. Implement `search_flights(origin, dest, dates)` (Go service)
 19. Implement `search_hotels(dest, dates, budget)` (Go service)
+19a. Add a hotel/booking "hold" action (state, not just search)
+    — the mockup's "Hold both" / "Show cheaper" buttons imply discrete
+    mutations the backend must expose and apply, beyond a read-only search.
 20. Implement `save_itinerary_day(day, plan)` → Supabase write
+20a. Surface agent-initiated itinerary diffs to the UI (e.g. "Just added")
+    — a way for the frontend to know *what changed* in the itinerary
+    after a turn, not just fetch the new state wholesale.
 21. Confirm agent picks correct tool per query type
 22. Confirm itinerary state survives across turns/sessions
+22a. Compute aggregated trip stats from itinerary state (e.g. total
+    travel time, total stay cost, daily walking distance) — derived
+    read, no new mutation; backs the mockup's stat cards.
+22b. Generate contextual follow-up suggestions from current trip/itinerary
+    state, replacing the mockup's static suggestion chips.
+22c. Calendar export (ICS) generated from stored itinerary.
 23. Expand destination corpus + eval set to remaining destinations (Bangkok, Almaty, Tokyo/Fuji/Hiroshima)
 
 **Checkpoint:** agent correctly routes across all tools; state persists.
+(15a, 19a, 20a, 22a-c added after reviewing the step 11a UI mockup —
+they're what the sidebar/itinerary panel/stat cards/action buttons
+imply the backend needs, beyond what was already listed above.)
 
 ## v2: Subagent split (do not start until v0/v1 seams are known)
 24. Define `ResearchQuery` / `ResearchResult` handoff schema
