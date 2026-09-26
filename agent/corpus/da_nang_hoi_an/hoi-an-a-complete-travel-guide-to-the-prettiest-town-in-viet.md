@@ -2,7 +2,7 @@
 source_url: https://bucketlistbums.com/single-post/hoian/
 destination: da_nang_hoi_an
 doc_type: blog
-title: Hoi An: A Complete Travel Guide to the Prettiest Town in Vietnam
+title: "Hoi An: A Complete Travel Guide to the Prettiest Town in Vietnam"
 fetched_date: 2026-09-26
 ---
 

@@ -217,6 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# trailmind: derived/generated corpus artifacts (regenerate via scripts/chunk_corpus.py)
+agent/corpus_chunks/
+
 # Node / Next.js
 node_modules/
 .next/

@@ -13,3 +13,13 @@ Each file is markdown with a YAML frontmatter block (`source_url`,
 `destination`, `doc_type`, `title`, `fetched_date`) followed by the
 cleaned page text. This is the input to the chunking step, not the
 chunked/embedded output.
+
+## Chunking
+
+```
+python scripts/chunk_corpus.py [--destination da_nang_hoi_an]
+```
+
+Splits each doc into semantic-unit chunks per the rules calibrated in
+`_calibration/notes.md`, and writes `corpus_chunks/<destination>.jsonl`
+(gitignored — regenerate anytime from the committed corpus).

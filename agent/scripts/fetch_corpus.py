@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import trafilatura
+import yaml
 
 CORPUS_ROOT = Path(__file__).resolve().parent.parent / "corpus"
 
@@ -69,15 +70,14 @@ def fetch_one(url: str, destination: str, doc_type: str) -> Path | None:
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_path = unique_path(dest_dir, slugify(title))
 
-    frontmatter = (
-        "---\n"
-        f"source_url: {url}\n"
-        f"destination: {destination}\n"
-        f"doc_type: {doc_type}\n"
-        f"title: {title}\n"
-        f"fetched_date: {datetime.date.today().isoformat()}\n"
-        "---\n\n"
-    )
+    frontmatter_data = {
+        "source_url": url,
+        "destination": destination,
+        "doc_type": doc_type,
+        "title": title,
+        "fetched_date": datetime.date.today().isoformat(),
+    }
+    frontmatter = "---\n" + yaml.safe_dump(frontmatter_data, allow_unicode=True, sort_keys=False) + "---\n\n"
     out_path.write_text(frontmatter + body, encoding="utf-8")
     print(f"[ok] {url} -> {out_path.relative_to(CORPUS_ROOT.parent)}")
     return out_path
