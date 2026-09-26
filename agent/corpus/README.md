@@ -37,3 +37,19 @@ python scripts/embed_corpus.py [--destination da_nang_hoi_an]
 Reads `corpus_chunks/`, writes `corpus_embeddings/<destination>.jsonl`
 (gitignored) with a 768-dim `embedding` vector added to each chunk
 record.
+
+## Vector store (pgvector)
+
+Requires the local Postgres container from the repo-root
+`docker-compose.yml`: `docker compose up -d` (schema in
+`database/schema.sql` is applied automatically on first start).
+
+```
+python scripts/load_chunks_to_pg.py [--destination da_nang_hoi_an]
+```
+
+Upserts `corpus_embeddings/` into the `chunks` table (unique on
+`destination, source_file, chunk_id`, so reruns are idempotent).
+Query it with `app.vector_store.search(conn, query_embedding,
+destination=...)`, which does cosine-distance nearest-neighbor with
+optional metadata filtering by destination.

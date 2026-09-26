@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: trailmind-pg
+    environment:
+      POSTGRES_USER: trailmind
+      POSTGRES_PASSWORD: trailmind
+      POSTGRES_DB: trailmind
+    ports:
+      - "5432:5432"
+    volumes:
+      - trailmind-pg-data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trailmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  trailmind-pg-data:
