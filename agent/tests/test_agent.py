@@ -26,7 +26,7 @@ def test_final_text_answer_with_no_tool_call() -> None:
 @patch("app.agent.search_destination_knowledge")
 def test_tool_call_result_fed_back_and_final_answer_returned(mock_search: Mock) -> None:
     mock_search.return_value = [
-        Snippet(rank=1, text="Tailor shops...", source_url="https://x", section_path="Buy", distance=0.2)
+        Snippet(rank=1, text="Tailor shops...", source_url="https://x", source_file="x.md", section_path="Buy", distance=0.2)
     ]
     llm = FakeLLMClient(
         [

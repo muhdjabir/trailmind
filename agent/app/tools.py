@@ -25,6 +25,7 @@ class Snippet:
     rank: int
     text: str
     source_url: str
+    source_file: str
     section_path: str
     distance: float
 
@@ -54,6 +55,7 @@ def search_destination_knowledge(
             rank=i + 1,
             text=r["text"],
             source_url=r["source_url"],
+            source_file=r["source_file"],
             section_path=r["section_path"],
             distance=r["distance"],
         )

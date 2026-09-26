@@ -24,13 +24,21 @@
     — `web/app/page.tsx`; single-turn per message (no server-side chat history yet). Verified end-to-end in a real browser via CORS-enabled `POST /chat`.
 12. ✅ Write CLAUDE.md into repo
 13. ✅ Write 15-20 eval questions for Da Nang/Hoi An (known-good answers)
-    — `agent/eval/questions.yaml`, 20 questions across transport/food/shopping/accommodation/activities/nightlife/safety/money/practical/culture, plus 2 adversarial (out-of-scope destination, known-but-empty destination) and 2 that deliberately hit real cross-source inconsistencies in the corpus. Spot-checked retrieval against the live corpus while writing — surfaced a real gap (q08's best-matching chunk didn't make top-5 for that phrasing), which is exactly the kind of signal step 14 scoring should catch systematically.
-14. Score: retrieval quality (right chunk top-5?), answer quality, hallucination rate
+    — `agent/eval/questions.yaml`, 20 questions across transport/food/shopping/accommodation/activities/nightlife/safety/money/practical/culture, plus 2 adversarial (out-of-scope destination, known-but-empty destination) and 2 that deliberately hit real cross-source inconsistencies in the corpus. (An informal spot-check while writing this had a bug in its own ad-hoc scoring and wrongly suggested a retrieval gap - see step 14, the real harness found 18/18 file-level retrieval hits.)
+14. ✅ Score: retrieval quality (right chunk top-5?), answer quality, hallucination rate
+    — `agent/scripts/run_eval.py`, results in `agent/eval/results/*.json` (gitignored). First full run:
+    - **Retrieval: 18/18** (100%, file-level — expected doc landed in top-5 for every question).
+    - **Answer quality: 35/50 key facts** (heuristic keyword coverage — approximate, not exact-match).
+    - **Hallucination: found a real one.** q19 (Bangkok — a known destination with zero corpus chunks loaded) got a confident, plausible-sounding answer (specific dishes, general claims) instead of an honest "I don't have specifics" — the empty-tool-result signal wasn't strong enough to stop the LLM falling back on its own pretraining. q18 (Bali — fully unknown destination) correctly refused, since `UnknownDestinationError` is a much stronger, unambiguous signal than an empty list.
+    - Manually reviewing the "misses" surfaced two more findings the heuristic score alone wouldn't show: q10 was actually a *good* answer (correctly said it didn't have a specific price rather than inventing one — the "miss" was just that pricing chunk not making top-5, not a hallucination); q04 revealed a real corpus-modeling gap — `da_nang_hoi_an` bundles two distinct cities under one destination, so a Hoi An-specific query has no metadata filter to exclude Da Nang content, and here it answered with a Da Nang shop instead of the Hoi An one.
+    - **Not fixed yet** — these are findings step 14 was designed to produce, not resolved:
+      1. Empty-tool-result hallucination (q19): likely fix is making `_run_tool`'s zero-snippets response an explicit "no information found" signal instead of a bare empty list, plus a system-prompt tweak.
+      2. City-conflation within `da_nang_hoi_an` (q04): would need a finer-grained metadata field (e.g. `city`) to filter on, beyond the current `destination` grouping.
 
-**Checkpoint:** ✅ reasoning loop works end to end, no persistence yet.
-**Next up: step 14 (build the scoring harness against
-`agent/eval/questions.yaml`) — that's what will tell us whether step 8
-(reranking) is actually needed, rather than guessing.**
+**Checkpoint:** ✅ v0 core loop done and scored. Both real findings above
+are unresolved — worth fixing before or alongside step 8 (reranking),
+since reranking wouldn't fix either one (one's a prompting/tool-result
+issue, the other's a metadata granularity issue).
 
 ## v1: Add tools + persistence
 15. Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`
