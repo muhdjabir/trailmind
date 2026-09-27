@@ -116,9 +116,22 @@ of the retrieval/hallucination fixes.
     shape of a day's plan isn't known until the tools that populate it
     (steps 17-20) exist. Verified live: applied to the running container,
     inserted/read/cascade-deleted a sample trip + day successfully.
-15a. Trip CRUD: create/list/switch between a user's trips
+15a. ✅ Trip CRUD: create/list/switch between a user's trips
     — backs the sidebar's trip list and "New trip" button (currently
     static demo chrome, see step 11a).
+    — `agent/app/trips.py`: `create_trip`/`list_trips`/`get_trip` against
+    the `trips` table; `get_trip` raises `TripNotFoundError` for an
+    unknown id (matches the typed-error convention in CLAUDE.md/`tools.py`
+    — a lookup by id has a real "doesn't exist" failure mode, unlike
+    `list_trips`, where empty is just a normal result). "Switch" is just
+    the frontend re-fetching by id — no separate endpoint. Wired to
+    `POST /trips`, `GET /trips`, `GET /trips/{id}` in `agent/app/main.py`.
+    `user_id` filtering exists in `list_trips` but nothing sets it yet
+    (no auth). Scoped to backend only for now — the sidebar/"New trip"
+    button in the UI stay static demo chrome until a later step wires
+    them up. Unit + integration tests in `tests/test_trips.py` and
+    `tests/test_main_trips.py`; also verified live against the running
+    `trailmind-agent` container (create/list/404-on-missing all correct).
 16. Wire trip state read/write into agent context (compact summary per turn, not full history)
     — also needs the chat *history* itself persisted per trip (today
     every message is independent - see `agent/app/agent.py::run_agent()`),
