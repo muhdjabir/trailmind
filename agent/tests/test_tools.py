@@ -34,7 +34,7 @@ def test_known_destination_returns_ranked_snippets(mock_retrieve: Mock) -> None:
     results = search_destination_knowledge("da_nang_hoi_an", "tailor shops", top_k=2)
 
     mock_retrieve.assert_called_once_with(
-        "tailor shops", destination="da_nang_hoi_an", top_k=2, conn=None
+        "tailor shops", destination="da_nang_hoi_an", city=None, top_k=2, conn=None
     )
     assert results == [
         Snippet(
@@ -54,6 +54,17 @@ def test_known_destination_returns_ranked_snippets(mock_retrieve: Mock) -> None:
             distance=0.31,
         ),
     ]
+
+
+@patch("app.tools.retrieve")
+def test_city_argument_is_passed_through_to_retrieve(mock_retrieve: Mock) -> None:
+    mock_retrieve.return_value = []
+
+    search_destination_knowledge("da_nang_hoi_an", "tailor shops", city="hoi_an")
+
+    mock_retrieve.assert_called_once_with(
+        "tailor shops", destination="da_nang_hoi_an", city="hoi_an", top_k=5, conn=None
+    )
 
 
 @patch("app.tools.retrieve")

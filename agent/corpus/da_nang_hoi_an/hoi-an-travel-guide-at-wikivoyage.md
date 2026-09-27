@@ -1,6 +1,8 @@
 ---
 source_url: https://en.wikivoyage.org/wiki/Hoi_An
 destination: da_nang_hoi_an
+country: vietnam
+city: hoi_an
 doc_type: wikivoyage
 title: Hoi An – Travel guide at Wikivoyage
 fetched_date: 2026-09-26

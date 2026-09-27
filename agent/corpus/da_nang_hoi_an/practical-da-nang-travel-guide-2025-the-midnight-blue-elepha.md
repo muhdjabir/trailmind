@@ -1,6 +1,8 @@
 ---
 source_url: https://www.midnightblueelephant.com/da-nang-travel-guide/
 destination: da_nang_hoi_an
+country: vietnam
+city: da_nang
 doc_type: blog
 title: Practical Da Nang Travel Guide 2025 | The Midnight Blue Elephant
 fetched_date: 2026-09-26

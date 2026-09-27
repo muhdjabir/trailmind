@@ -33,10 +33,15 @@ class Snippet:
 def search_destination_knowledge(
     destination: str,
     query: str,
+    city: str | None = None,
     top_k: int = 5,
     conn: psycopg.Connection | None = None,
 ) -> list[Snippet]:
     """Ranked snippets + sources for `query`, scoped to `destination`.
+
+    `city` optionally narrows further, for destinations that bundle
+    multiple cities (e.g. "hoi_an" within da_nang_hoi_an) - omit it for
+    single-city destinations or when the question isn't city-specific.
 
     RAG-backed; only covers the destinations in KNOWN_DESTINATIONS.
     Raises UnknownDestinationError, EmbeddingError, or VectorStoreError
@@ -49,7 +54,7 @@ def search_destination_knowledge(
             f"(known destinations: {', '.join(sorted(KNOWN_DESTINATIONS))})"
         )
 
-    results = retrieve(query, destination=destination, top_k=top_k, conn=conn)
+    results = retrieve(query, destination=destination, city=city, top_k=top_k, conn=conn)
     return [
         Snippet(
             rank=i + 1,

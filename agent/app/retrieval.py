@@ -16,16 +16,20 @@ from app.vector_store import get_connection, search
 def retrieve(
     query: str,
     destination: str | None = None,
+    city: str | None = None,
     top_k: int = 5,
     conn: psycopg.Connection | None = None,
 ) -> list[dict]:
-    """Ranked snippets + sources for `query`, optionally scoped to `destination`."""
+    """Ranked snippets + sources for `query`, optionally scoped to `destination`
+
+    and, within it, to one `city` (for destinations that bundle several,
+    e.g. da_nang_hoi_an)."""
     query_embedding = embed_texts([query])[0]
 
     owns_conn = conn is None
     conn = conn or get_connection()
     try:
-        return search(conn, query_embedding, destination=destination, top_k=top_k)
+        return search(conn, query_embedding, destination=destination, city=city, top_k=top_k)
     finally:
         if owns_conn:
             conn.close()

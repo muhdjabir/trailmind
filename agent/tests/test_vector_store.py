@@ -5,7 +5,9 @@ from app.vector_store import VectorStoreError, get_connection, search, upsert_ch
 pytestmark = pytest.mark.integration
 
 
-def _sample_record(destination: str, chunk_id: int, embedding: list[float]) -> dict:
+def _sample_record(
+    destination: str, chunk_id: int, embedding: list[float], city: str | None = None
+) -> dict:
     return {
         "chunk_id": chunk_id,
         "section_path": "Test > Section",
@@ -14,6 +16,8 @@ def _sample_record(destination: str, chunk_id: int, embedding: list[float]) -> d
         "possibly_orphaned": False,
         "metadata": {
             "destination": destination,
+            "country": "vietnam" if city else None,
+            "city": city,
             "doc_type": "blog",
             "source_url": "https://example.com",
         },
@@ -70,6 +74,22 @@ def test_search_respects_destination_filter(conn) -> None:
     results = search(conn, query_embedding=vec, destination=TEST_DESTINATION, top_k=10)
     assert all(r["destination"] == TEST_DESTINATION for r in results)
     assert any(r["source_file"] == "test-doc.md" for r in results)
+
+
+def test_search_respects_city_filter_within_a_destination(conn) -> None:
+    vec = [0.5] * 768
+    upsert_chunks(
+        conn,
+        [
+            _sample_record(TEST_DESTINATION, 1, vec, city="hoi_an"),
+            _sample_record(TEST_DESTINATION, 2, vec, city="da_nang"),
+        ],
+    )
+
+    results = search(conn, query_embedding=vec, destination=TEST_DESTINATION, city="hoi_an", top_k=10)
+    assert all(r["city"] == "hoi_an" for r in results)
+    assert any(r["chunk_id"] == 1 for r in results)
+    assert not any(r["chunk_id"] == 2 for r in results)
 
 
 def test_upsert_is_idempotent_on_conflict(conn) -> None:

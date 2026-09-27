@@ -96,6 +96,30 @@ def test_embedding_error_fed_back_as_tool_result_not_raised(mock_search: Mock) -
     assert "temporarily unavailable" in tool_message["content"]
 
 
+@patch("app.agent.search_destination_knowledge")
+def test_zero_snippets_fed_back_as_explicit_no_information_signal(mock_search: Mock) -> None:
+    mock_search.return_value = []
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="search_destination_knowledge",
+                              arguments={"destination": "bangkok", "query": "street food"})
+                ],
+            ),
+            LLMTurn(content="I don't have specifics on that."),
+        ]
+    )
+
+    result = run_agent("street food in bangkok", llm=llm)
+
+    assert result == "I don't have specifics on that."
+    tool_message = llm.calls[1][-1]
+    assert "no_information_found" in tool_message["content"]
+    assert "snippets" not in tool_message["content"]
+
+
 def test_gives_up_after_max_tool_rounds() -> None:
     looping_turn = LLMTurn(
         content=None,

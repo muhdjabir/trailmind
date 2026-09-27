@@ -1,6 +1,8 @@
 ---
 source_url: https://en.wikivoyage.org/wiki/Da_Nang
 destination: da_nang_hoi_an
+country: vietnam
+city: da_nang
 doc_type: wikivoyage
 title: Da Nang – Travel guide at Wikivoyage
 fetched_date: 2026-09-26

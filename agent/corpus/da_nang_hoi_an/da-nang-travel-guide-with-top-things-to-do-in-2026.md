@@ -1,6 +1,8 @@
 ---
 source_url: https://www.indietraveller.co/da-nang-travel-guide/
 destination: da_nang_hoi_an
+country: vietnam
+city: da_nang
 doc_type: blog
 title: Da Nang Travel Guide (With Top Things To Do In 2026)
 fetched_date: 2026-09-26

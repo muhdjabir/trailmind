@@ -33,7 +33,16 @@ SYSTEM_PROMPT = (
     f"You only have detailed info on: {', '.join(sorted(KNOWN_DESTINATIONS))}. "
     "If asked about anywhere else, say plainly that you don't have details on "
     "it rather than guessing. Don't invent specifics (prices, names, "
-    "addresses) that didn't come back from a search."
+    "addresses) that didn't come back from a search.\n\n"
+    "Some destinations bundle more than one city (e.g. da_nang_hoi_an "
+    "covers both Da Nang and Hoi An). When the question is about a "
+    "specific one of those cities, pass its name as the `city` argument "
+    "so the search doesn't mix in the wrong city's details.\n\n"
+    "If a search comes back with no matching information, that means the "
+    "knowledge base doesn't cover this specific thing - even for a "
+    "destination you otherwise know about. Say so honestly instead of "
+    "filling the gap with plausible-sounding details from your own general "
+    "knowledge."
 )
 
 TOOL_SCHEMA = {
@@ -55,6 +64,14 @@ TOOL_SCHEMA = {
                     "type": "string",
                     "description": "Free-text search query.",
                 },
+                "city": {
+                    "type": "string",
+                    "description": (
+                        "Optional: narrow to one city within a destination that "
+                        "bundles several (e.g. 'hoi_an' or 'da_nang' within "
+                        "da_nang_hoi_an). Omit for single-city destinations."
+                    ),
+                },
             },
             "required": ["destination", "query"],
         },
@@ -70,8 +87,18 @@ def _run_tool(name: str, arguments: dict, conn: psycopg.Connection | None) -> di
         snippets = search_destination_knowledge(
             destination=arguments.get("destination", ""),
             query=arguments.get("query", ""),
+            city=arguments.get("city"),
             conn=conn,
         )
+        if not snippets:
+            return {
+                "no_information_found": True,
+                "message": (
+                    "No matching information in the knowledge base for this "
+                    "query. Do not answer from general knowledge - tell the "
+                    "user plainly that you don't have specifics on this."
+                ),
+            }
         return {"snippets": [dataclasses.asdict(s) for s in snippets]}
     except UnknownDestinationError as e:
         return {"error": str(e)}

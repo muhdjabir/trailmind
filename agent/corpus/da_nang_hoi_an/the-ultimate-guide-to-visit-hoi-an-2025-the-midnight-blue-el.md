@@ -1,6 +1,8 @@
 ---
 source_url: https://www.midnightblueelephant.com/visit-hoi-an-vietnam/
 destination: da_nang_hoi_an
+country: vietnam
+city: hoi_an
 doc_type: blog
 title: The ultimate Guide to visit Hoi An 2025 | The Midnight Blue Elephant
 fetched_date: 2026-09-26

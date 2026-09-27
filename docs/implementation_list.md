@@ -58,9 +58,34 @@
     - **Answer quality: 35/50 key facts** (heuristic keyword coverage — approximate, not exact-match).
     - **Hallucination: found a real one.** q19 (Bangkok — a known destination with zero corpus chunks loaded) got a confident, plausible-sounding answer (specific dishes, general claims) instead of an honest "I don't have specifics" — the empty-tool-result signal wasn't strong enough to stop the LLM falling back on its own pretraining. q18 (Bali — fully unknown destination) correctly refused, since `UnknownDestinationError` is a much stronger, unambiguous signal than an empty list.
     - Manually reviewing the "misses" surfaced two more findings the heuristic score alone wouldn't show: q10 was actually a *good* answer (correctly said it didn't have a specific price rather than inventing one — the "miss" was just that pricing chunk not making top-5, not a hallucination); q04 revealed a real corpus-modeling gap — `da_nang_hoi_an` bundles two distinct cities under one destination, so a Hoi An-specific query has no metadata filter to exclude Da Nang content, and here it answered with a Da Nang shop instead of the Hoi An one.
-    - **Not fixed yet** — these are findings step 14 was designed to produce, not resolved:
-      1. Empty-tool-result hallucination (q19): likely fix is making `_run_tool`'s zero-snippets response an explicit "no information found" signal instead of a bare empty list, plus a system-prompt tweak.
-      2. City-conflation within `da_nang_hoi_an` (q04): would need a finer-grained metadata field (e.g. `city`) to filter on, beyond the current `destination` grouping.
+    - **Findings status:**
+      1. ✅ Empty-tool-result hallucination (q19) — `_run_tool` in `agent/app/agent.py`
+         now returns `{"no_information_found": True, "message": ...}` instead of
+         `{"snippets": []}` on a zero-result search, and `SYSTEM_PROMPT` explicitly
+         tells the LLM this means "the knowledge base doesn't cover this, even for
+         a known destination" rather than a cue to fall back on pretraining.
+         Covered by `test_zero_snippets_fed_back_as_explicit_no_information_signal`
+         in `agent/tests/test_agent.py`, and confirmed live via `run_eval.py --id
+         q19`: `zero_snippets_returned=True` and the reply now honestly says it
+         doesn't have specifics on Bangkok street food instead of inventing dishes.
+      2. ✅ City-conflation within `da_nang_hoi_an` (q04) — added `country`/`city`
+         columns to `chunks` (`database/schema.sql`), threaded an optional `city`
+         filter through `search()`/`retrieve()`/`search_destination_knowledge()`,
+         and tagged all 6 `corpus/da_nang_hoi_an/*.md` docs with `country: vietnam`
+         + `city: da_nang`/`hoi_an` frontmatter. `destination` is unchanged as the
+         coverage/grouping key (matches CLAUDE.md's tool contract); `city` only
+         narrows within it, and the agent's tool schema/system prompt now tell the
+         LLM to pass `city` when a question names one of a bundled destination's
+         cities. Unit + integration tests added (`test_search_respects_city_filter_
+         within_a_destination`, `test_city_argument_is_passed_through_to_retrieve`).
+         Migrated the live dev DB (`ALTER TABLE ... ADD COLUMN country/city`, since
+         the existing Postgres volume predates this change and schema.sql only
+         applies on first init) and reran `chunk_corpus.py` → `embed_corpus.py` →
+         `load_chunks_to_pg.py` for `da_nang_hoi_an` — 143 chunks reloaded, 83 tagged
+         `city=da_nang`, 60 `city=hoi_an`. Confirmed via `run_eval.py --id q04`: the
+         reply now names **Madam Khanh - The Banh Mi Queen** (a real Hoi An spot),
+         not a Da Nang one. Full test suite (46 tests, including integration) passes
+         against the live containers.
 
 **Checkpoint:** ✅ v0 core loop done and scored. Both real findings above
 are unresolved — worth fixing before or alongside step 8 (reranking),

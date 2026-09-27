@@ -18,9 +18,26 @@ def test_retrieve_embeds_query_and_searches(
 
     mock_embed.assert_called_once_with(["things to do in Hoi An"])
     mock_search.assert_called_once_with(
-        mock_conn, [0.1, 0.2, 0.3], destination="da_nang_hoi_an", top_k=3
+        mock_conn, [0.1, 0.2, 0.3], destination="da_nang_hoi_an", city=None, top_k=3
     )
     assert result == [{"text": "chunk text", "source_url": "https://example.com"}]
+
+
+@patch("app.retrieval.get_connection")
+@patch("app.retrieval.search")
+@patch("app.retrieval.embed_texts")
+def test_retrieve_passes_city_through_to_search(
+    mock_embed: Mock, mock_search: Mock, mock_get_connection: Mock
+) -> None:
+    mock_embed.return_value = [[0.1, 0.2, 0.3]]
+    mock_conn = Mock()
+    mock_get_connection.return_value = mock_conn
+
+    retrieve("tailors in Hoi An", destination="da_nang_hoi_an", city="hoi_an", top_k=3)
+
+    mock_search.assert_called_once_with(
+        mock_conn, [0.1, 0.2, 0.3], destination="da_nang_hoi_an", city="hoi_an", top_k=3
+    )
 
 
 @patch("app.retrieval.get_connection")
