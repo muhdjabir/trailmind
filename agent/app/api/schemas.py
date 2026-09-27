@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.repositories.chat_history_repo import ChatMessage
 from app.repositories.trips_repo import Trip
+from app.services.trip_stats_service import TripStats
 
 
 class ChatRequest(BaseModel):
@@ -56,6 +57,45 @@ class ItineraryDayResponse(BaseModel):
     title: str
     items: list[str]
     updated_at: datetime.datetime
+
+
+class WeatherStatsResponse(BaseModel):
+    destination: str
+    source: str  # "forecast" or "historical_average"
+    avg_high_c: float
+    avg_low_c: float
+    total_precipitation_mm: float
+
+
+class TripStatsResponse(BaseModel):
+    trip_days: int | None
+    days_planned: int
+    open_days: list[int]
+    budget_planned: float | None
+    budget_total: float | None
+    weather: WeatherStatsResponse | None
+    weather_error: str | None
+
+    @classmethod
+    def from_stats(cls, stats: TripStats) -> "TripStatsResponse":
+        weather = None
+        if stats.weather is not None:
+            weather = WeatherStatsResponse(
+                destination=stats.weather_destination,
+                source=stats.weather.source,
+                avg_high_c=round(stats.weather.avg_high_c, 1),
+                avg_low_c=round(stats.weather.avg_low_c, 1),
+                total_precipitation_mm=round(stats.weather.total_precipitation_mm, 1),
+            )
+        return cls(
+            trip_days=stats.trip_days,
+            days_planned=stats.days_planned,
+            open_days=stats.open_days,
+            budget_planned=stats.budget_planned,
+            budget_total=stats.budget_total,
+            weather=weather,
+            weather_error=stats.weather_error,
+        )
 
 
 class ChatMessageResponse(BaseModel):

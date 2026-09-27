@@ -34,6 +34,7 @@ from app.services.itinerary_service import (
 )
 from app.services.knowledge_service import search_destination_knowledge
 from app.services.trip_context import trip_summary
+from app.services.trip_service import InvalidTripDetailsError, set_trip_details
 from app.services.weather_service import get_weather
 from app.services.web_search_service import TavilyError, search_web
 
@@ -77,8 +78,9 @@ SYSTEM_PROMPT = (
 )
 
 ITINERARY_PROMPT = (
-    "The itinerary and trip dates only change when you call "
-    "save_itinerary_day, delete_itinerary_day or update_trip_dates. Never "
+    "The itinerary and trip details only change when you call "
+    "save_itinerary_day, delete_itinerary_day, update_trip_dates or "
+    "update_trip_details. Never "
     "say you've added, updated, removed, extended or saved anything unless "
     "you called the matching tool in this turn and it succeeded - earlier "
     "messages in this conversation that mention updates don't show their "
@@ -103,7 +105,12 @@ ITINERARY_PROMPT = (
     "update_trip_dates once with drop_days_past_end=true - no separate "
     "deletes needed - and tell the user which days were dropped. If they "
     "haven't said to drop those days, leave it false: the tool refuses "
-    "and you should ask them first."
+    "and you should ask them first.\n\n"
+    "Whenever the user mentions where they're going, how many people are "
+    "travelling, or their budget, save it with update_trip_details right "
+    "away (and their dates with update_trip_dates) - even if it's in "
+    "passing, like 'two of us, Hoi An in November, about 2400 all in'. "
+    "Only pass what they actually said; don't guess missing details."
 )
 
 SEARCH_KNOWLEDGE_SCHEMA = {
@@ -284,14 +291,54 @@ UPDATE_TRIP_DATES_SCHEMA = {
     },
 }
 
+UPDATE_TRIP_DETAILS_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "update_trip_details",
+        "description": (
+            "Save the current trip's destinations, group size or budget. Pass "
+            "only the details the user gave; anything left out stays as it is."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "destinations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Every destination of the trip (replaces the current list). "
+                        "Use a guide slug like 'da_nang_hoi_an' when it's in your "
+                        "guide, otherwise the place name, e.g. 'Paris'."
+                    ),
+                },
+                "party_size": {"type": "integer", "description": "Number of travellers."},
+                "budget_planned": {
+                    "type": "number",
+                    "description": "Amount already planned/committed, as a plain number.",
+                },
+                "budget_total": {
+                    "type": "number",
+                    "description": "The user's total budget, as a plain number.",
+                },
+            },
+        },
+    },
+}
+
 TOOL_SCHEMAS = [SEARCH_KNOWLEDGE_SCHEMA, GET_WEATHER_SCHEMA, SEARCH_WEB_SCHEMA]
 # Only offered when the turn belongs to a trip - there's nothing to write to otherwise.
 TRIP_TOOL_SCHEMAS = TOOL_SCHEMAS + [
     SAVE_ITINERARY_DAY_SCHEMA,
     DELETE_ITINERARY_DAY_SCHEMA,
     UPDATE_TRIP_DATES_SCHEMA,
+    UPDATE_TRIP_DETAILS_SCHEMA,
 ]
-TRIP_TOOL_NAMES = {"save_itinerary_day", "delete_itinerary_day", "update_trip_dates"}
+TRIP_TOOL_NAMES = {
+    "save_itinerary_day",
+    "delete_itinerary_day",
+    "update_trip_dates",
+    "update_trip_details",
+}
 
 
 def _run_search_destination_knowledge(arguments: dict, conn: psycopg.Connection | None) -> dict:
@@ -410,10 +457,31 @@ def _update_trip_dates(
     }
 
 
+def _update_trip_details(
+    arguments: dict, conn: psycopg.Connection, trip_id: int, user_message: str
+) -> dict:
+    trip = set_trip_details(
+        conn,
+        trip_id,
+        destinations=arguments.get("destinations"),
+        party_size=arguments.get("party_size"),
+        budget_planned=arguments.get("budget_planned"),
+        budget_total=arguments.get("budget_total"),
+    )
+    return {
+        "updated": True,
+        "destinations": trip.destinations,
+        "party_size": trip.party_size,
+        "budget_planned": trip.budget_planned,
+        "budget_total": trip.budget_total,
+    }
+
+
 _TRIP_TOOL_RUNNERS = {
     "save_itinerary_day": _save_itinerary_day,
     "delete_itinerary_day": _delete_itinerary_day,
     "update_trip_dates": _update_trip_dates,
+    "update_trip_details": _update_trip_details,
 }
 
 
@@ -428,7 +496,7 @@ def _run_trip_tool(
         return {"error": "no trip is selected, so there's no itinerary to change"}
     try:
         return _TRIP_TOOL_RUNNERS[name](arguments, conn, trip_id, user_message)
-    except (InvalidItineraryDayError, InvalidTripDatesError) as e:
+    except (InvalidItineraryDayError, InvalidTripDatesError, InvalidTripDetailsError) as e:
         return {"error": str(e)}
     except psycopg.Error as e:
         # Otherwise the aborted transaction would also break persisting

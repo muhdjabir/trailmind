@@ -45,7 +45,14 @@ reasoning over tools, for destinations the user is actively planning
   drop/remove/delete/cut them (`_DROP_INTENT` in chat_service.py) -
   enforced in code because gemma4 set it for a plain "can we make it 3
   days?". A missed match is safe: the tool refuses and the model asks.
-- All three trip tools are only offered on trip-scoped turns.
+- update_trip_details(destinations?, party_size?, budget_planned?,
+  budget_total?) -> partial update; omitted fields are left alone,
+  `destinations` replaces the list. Known guide destinations are
+  normalized to their slug; anything else is stored as the place name
+  (`app/services/trip_service.py`). The prompt tells the agent to save
+  these whenever the user mentions them, even in passing - UI-created
+  trips start with only a name.
+- All four trip tools are only offered on trip-scoped turns.
 - search_destination_knowledge raises `UnknownDestinationError` for a
   destination outside `KNOWN_DESTINATIONS` (defined once in
   `app/destinations.py`, shared across tools — not redefined per tool).

@@ -1,3 +1,6 @@
+import datetime
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -5,6 +8,7 @@ from app.main import app
 from app.repositories.chat_history_repo import append_message
 from app.repositories.itinerary_repo import upsert_day
 from app.repositories.vector_store_repo import VectorStoreError, get_connection
+from app.services.weather_service import WeatherResult
 
 pytestmark = pytest.mark.integration
 
@@ -113,3 +117,36 @@ def test_itinerary_date_null_when_trip_dates_open(_cleanup) -> None:
 
 def test_itinerary_returns_404_for_unknown_trip() -> None:
     assert client.get("/trips/9999999/itinerary").status_code == 404
+
+
+def test_stats_for_dated_trip_with_days(_cleanup) -> None:
+    created = client.post(
+        "/trips",
+        json={"name": f"{TEST_NAME_PREFIX} stats", "destinations": ["da_nang_hoi_an"],
+              "start_date": "2026-11-06", "end_date": "2026-11-09", "budget_total": 2000},
+    ).json()
+    upsert_day(_cleanup, created["id"], 1, {"title": "Arrive", "items": []})
+    weather = WeatherResult("historical_average", datetime.date(2026, 11, 6),
+                            datetime.date(2026, 11, 9), 27.04, 22.0, 60.0, 3)
+
+    with patch("app.services.trip_stats_service.get_weather", return_value=weather):
+        response = client.get(f"/trips/{created['id']}/stats")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trip_days"] == 4
+    assert body["days_planned"] == 1
+    assert body["open_days"] == [2, 3, 4]
+    assert body["budget_total"] == 2000
+    assert body["weather"] == {
+        "destination": "da_nang_hoi_an",
+        "source": "historical_average",
+        "avg_high_c": 27.0,
+        "avg_low_c": 22.0,
+        "total_precipitation_mm": 60.0,
+    }
+    assert body["weather_error"] is None
+
+
+def test_stats_returns_404_for_unknown_trip() -> None:
+    assert client.get("/trips/9999999/stats").status_code == 404

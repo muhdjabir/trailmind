@@ -1,4 +1,4 @@
-// Mirrors agent/app/api/schemas.py's TripResponse/ChatMessageResponse/ItineraryDayResponse.
+// Mirrors agent/app/api/schemas.py's response models.
 
 export type Trip = {
   id: number;
@@ -22,6 +22,22 @@ export type ItineraryDay = {
   title: string;
   items: string[];
   updated_at: string;
+};
+
+export type TripStats = {
+  trip_days: number | null;
+  days_planned: number;
+  open_days: number[];
+  budget_planned: number | null;
+  budget_total: number | null;
+  weather: {
+    destination: string;
+    source: "forecast" | "historical_average";
+    avg_high_c: number;
+    avg_low_c: number;
+    total_precipitation_mm: number;
+  } | null;
+  weather_error: string | null;
 };
 
 export type ChatMessage = {

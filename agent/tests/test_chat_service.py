@@ -619,6 +619,51 @@ def test_delete_itinerary_day_tool_uses_current_trip(
     assert {"delete_itinerary_day", "update_trip_dates"} <= _tool_names(llm.tools_offered[0])
 
 
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.set_trip_details")
+def test_update_trip_details_passes_only_given_fields(
+    mock_set: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    mock_set.return_value = _fake_trip(destinations=["da_nang_hoi_an"], party_size=2)
+    conn = Mock()
+    llm = _trip_turn(
+        "update_trip_details",
+        {"destinations": ["da_nang_hoi_an"], "party_size": 2},
+        "Noted - two of you to Hoi An.",
+    )
+
+    run_agent("two of us going to hoi an", llm=llm, conn=conn, trip_id=5)
+
+    mock_set.assert_called_once_with(
+        conn, 5, destinations=["da_nang_hoi_an"], party_size=2,
+        budget_planned=None, budget_total=None,
+    )
+    assert '"updated": true' in llm.calls[1][-1]["content"]
+    assert "update_trip_details" in _tool_names(llm.tools_offered[0])
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.set_trip_details")
+def test_invalid_trip_details_fed_back_not_raised(
+    mock_set: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    from app.services.trip_service import InvalidTripDetailsError
+
+    mock_get_trip.return_value = _fake_trip()
+    mock_set.side_effect = InvalidTripDetailsError("party_size must be a positive integer")
+    llm = _trip_turn("update_trip_details", {"party_size": 0}, "How many of you?")
+
+    assert run_agent("it's us", llm=llm, conn=Mock(), trip_id=5) == "How many of you?"
+    assert "positive integer" in llm.calls[1][-1]["content"]
+
+
 def test_trip_tools_not_offered_without_trip() -> None:
     llm = FakeLLMClient([LLMTurn(content="hi")])
     run_agent("hello", llm=llm)

@@ -391,9 +391,50 @@ of the retrieval/hallucination fixes.
     a plain question cleared all badges.
 21. Confirm agent picks correct tool per query type
 22. Confirm itinerary state survives across turns/sessions
-22a. Compute aggregated trip stats from itinerary state (e.g. total
+22a. ✅ Compute aggregated trip stats from itinerary state (e.g. total
     travel time, total stay cost, daily walking distance) — derived
     read, no new mutation; backs the mockup's stat cards.
+    — Scoped (user-confirmed) to stats that can actually be computed
+    today. The mockup's train time / stay cost / km-per-day need data
+    nothing stores yet (itinerary items are plain labels; flights and
+    hotels are steps 18/19), and having gemma4 fill in numbers would
+    mostly be guesses shown as facts. Those three cards get added once
+    18/19 supply real durations and prices.
+    `services/trip_stats_service.py::compute_trip_stats()` → `GET
+    /trips/{id}/stats`: trip length, days planned, which days are still
+    open, planned/total budget, and weather over the trip dates via
+    `get_weather` (first destination only, named in the response;
+    forecast vs historical average kept distinct). A weather failure is
+    reported in `weather_error`, not raised - the other stats still
+    return. `TripStatsCards.tsx` renders them above the itinerary, in the
+    mockup's card style, each hidden when its data doesn't exist (no
+    dates, no destination, no budget).
+    Note: weather makes up to 3 Open-Meteo archive calls for far-out
+    trips (~2.8s measured), and stats are refetched after every reply.
+    Fine for now - the fetch doesn't block the chat - but worth caching
+    if it becomes noticeable.
+    — Follow-up: UI-created trips only get a name, so the weather and
+    budget cards never showed for them. Added an `update_trip_details`
+    tool (destinations, party size, planned/total budget; partial update)
+    via `trips_repo.update_trip_details` + `services/trip_service.py`,
+    and a prompt rule to save these whenever the user mentions them.
+    Destinations are no longer guide slugs only: known ones normalize to
+    their slug, others (e.g. "Paris") are kept as place names. Live on
+    name-only trips: "two of us, Hoi An and Da Nang, 6-9 November, about
+    2400 all in" saved destination, party size, budget *and* dates, and
+    stats then showed weather + budget; "4 friends doing Bangkok, total
+    budget 3000" and "Paris for 3 people, no budget yet" saved exactly
+    what was said (no invented budget).
+    **Bug found live, fixed:** NUMERIC budget columns come back from
+    psycopg as `Decimal`, which crashed `json.dumps` on the tool result
+    (500 on `/chat`); unit tests used ints and missed it.
+    `trips_repo._to_trip()` now converts to float, matching `Trip`'s
+    declared type, with an integration test pinning it.
+    No currency is stored - budgets are plain numbers in whatever
+    currency the user used.
+    Verified in a real browser against real Open-Meteo data: cards
+    showed 2/4 planned, "28° / 24°, typical for these dates", and budget
+    1,860 of 2,400; asking the agent to plan day 2 updated Planned to 3/4.
 22b. Generate contextual follow-up suggestions from current trip/itinerary
     state, replacing the mockup's static suggestion chips.
 22c. Calendar export (ICS) generated from stored itinerary.

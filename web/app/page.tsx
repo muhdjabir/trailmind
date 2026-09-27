@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { ItineraryPanel } from "./components/ItineraryPanel";
 import { Sidebar } from "./components/Sidebar";
 import { diffItinerary, type DayChange } from "./lib/itineraryDiff";
-import type { ItineraryDay, Trip } from "./lib/types";
+import type { ItineraryDay, Trip, TripStats } from "./lib/types";
 
 type Message = {
   role: "user" | "assistant" | "error";
@@ -39,6 +39,7 @@ export default function Home() {
   // Days the agent changed in the latest turn - cleared on the next send
   // or trip switch, so the badges mean "this reply did that".
   const [dayChanges, setDayChanges] = useState<Record<number, DayChange>>({});
+  const [stats, setStats] = useState<TripStats | null>(null);
   // Lets async results from a previous trip's request be ignored after
   // the user has switched trips.
   const activeTripRef = useRef<number | null>(null);
@@ -54,6 +55,17 @@ export default function Home() {
     } catch {
       // Keep whatever's shown rather than blanking the panel on a blip.
       return null;
+    }
+  }
+
+  async function loadStats(tripId: number) {
+    try {
+      const res = await fetch(`${API_URL}/trips/${tripId}/stats`);
+      if (!res.ok) return;
+      const data: TripStats = await res.json();
+      if (activeTripRef.current === tripId) setStats(data);
+    } catch {
+      // Cards just stay as they were; nothing to tell the user.
     }
   }
 
@@ -82,7 +94,9 @@ export default function Home() {
     setMessages([]);
     setItinerary([]);
     setDayChanges({});
+    setStats(null);
     loadItinerary(id);
+    loadStats(id);
     try {
       const res = await fetch(`${API_URL}/trips/${id}/messages`);
       if (!res.ok) return;
@@ -113,6 +127,7 @@ export default function Home() {
       setMessages([]);
       setItinerary([]);
       setDayChanges({});
+      setStats(null);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -149,6 +164,7 @@ export default function Home() {
       // The agent may have changed itinerary days or trip dates this turn.
       if (tripId !== null) {
         refreshTrip(tripId);
+        loadStats(tripId);
         const itineraryAfter = await loadItinerary(tripId);
         if (itineraryAfter) setDayChanges(diffItinerary(itineraryBefore, itineraryAfter));
       }
@@ -273,7 +289,7 @@ export default function Home() {
         </div>
       </main>
 
-      <ItineraryPanel hasTrip={selectedTripId !== null} days={itinerary} changes={dayChanges} />
+      <ItineraryPanel hasTrip={selectedTripId !== null} days={itinerary} changes={dayChanges} stats={stats} />
     </div>
   );
 }

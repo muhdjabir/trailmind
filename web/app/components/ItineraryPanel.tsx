@@ -1,7 +1,8 @@
 // "Export to calendar" (step 22c) isn't wired yet - the button is inert.
 
 import type { DayChange } from "../lib/itineraryDiff";
-import type { ItineraryDay } from "../lib/types";
+import type { ItineraryDay, TripStats } from "../lib/types";
+import { TripStatsCards } from "./TripStatsCards";
 
 const BADGE: Record<DayChange, string> = { added: "Just added", updated: "Updated" };
 
@@ -19,9 +20,10 @@ type Props = {
   hasTrip: boolean;
   days: ItineraryDay[];
   changes: Record<number, DayChange>;
+  stats: TripStats | null;
 };
 
-export function ItineraryPanel({ hasTrip, days, changes }: Props) {
+export function ItineraryPanel({ hasTrip, days, changes, stats }: Props) {
   return (
     <aside className="flex w-80 flex-shrink-0 flex-col border-l border-[#e2e0da] bg-[#f1efec] px-5 py-6">
       <div className="mb-4 flex items-baseline justify-between">
@@ -32,6 +34,8 @@ export function ItineraryPanel({ hasTrip, days, changes }: Props) {
           </span>
         )}
       </div>
+
+      {hasTrip && <TripStatsCards stats={stats} />}
 
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
         {!hasTrip ? (

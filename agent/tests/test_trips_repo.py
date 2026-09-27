@@ -8,6 +8,7 @@ from app.repositories.trips_repo import (
     get_trip,
     list_trips,
     update_trip_dates,
+    update_trip_details,
 )
 from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
@@ -108,3 +109,33 @@ def test_update_trip_dates_persists_and_bumps_updated_at(conn) -> None:
 def test_update_trip_dates_raises_not_found_for_missing_id(conn) -> None:
     with pytest.raises(TripNotFoundError):
         update_trip_dates(conn, 99999999, datetime.date(2026, 1, 1), datetime.date(2026, 1, 2))
+
+
+def test_update_trip_details_writes_only_given_fields(conn) -> None:
+    trip = create_trip(conn, name=f"{TEST_NAME_PREFIX} details", party_size=3)
+
+    updated = update_trip_details(conn, trip.id, {"destinations": ["bangkok"], "budget_total": 2400})
+
+    assert updated.destinations == ["bangkok"]
+    assert updated.budget_total == 2400
+    assert updated.party_size == 3
+
+
+def test_update_trip_details_rejects_unknown_columns(conn) -> None:
+    trip = create_trip(conn, name=f"{TEST_NAME_PREFIX} details bad")
+    with pytest.raises(ValueError):
+        update_trip_details(conn, trip.id, {"name": "hijacked"})
+
+
+def test_update_trip_details_raises_not_found_for_missing_id(conn) -> None:
+    with pytest.raises(TripNotFoundError):
+        update_trip_details(conn, 99999999, {"party_size": 2})
+
+
+def test_budgets_come_back_as_float_not_decimal(conn) -> None:
+    trip = create_trip(conn, name=f"{TEST_NAME_PREFIX} budget type", budget_planned=1860,
+                       budget_total=2400.5)
+
+    for fetched in (trip, get_trip(conn, trip.id)):
+        assert type(fetched.budget_planned) is float
+        assert type(fetched.budget_total) is float

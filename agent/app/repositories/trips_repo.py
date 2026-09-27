@@ -34,6 +34,15 @@ class Trip:
     updated_at: datetime.datetime
 
 
+def _to_trip(row: dict) -> Trip:
+    # NUMERIC columns come back as Decimal, which json.dumps can't encode
+    # (crashed the update_trip_details tool result) - Trip promises float.
+    for col in ("budget_planned", "budget_total"):
+        if row[col] is not None:
+            row[col] = float(row[col])
+    return Trip(**row)
+
+
 def create_trip(
     conn: psycopg.Connection,
     name: str,
@@ -68,7 +77,7 @@ def create_trip(
         )
         row = cur.fetchone()
     conn.commit()
-    return Trip(**row)
+    return _to_trip(row)
 
 
 def list_trips(conn: psycopg.Connection, user_id: str | None = None) -> list[Trip]:
@@ -80,7 +89,7 @@ def list_trips(conn: psycopg.Connection, user_id: str | None = None) -> list[Tri
             params,
         )
         rows = cur.fetchall()
-    return [Trip(**row) for row in rows]
+    return [_to_trip(row) for row in rows]
 
 
 def update_trip_dates(
@@ -102,7 +111,29 @@ def update_trip_dates(
     conn.commit()
     if row is None:
         raise TripNotFoundError(f"no trip with id {trip_id}")
-    return Trip(**row)
+    return _to_trip(row)
+
+
+UPDATABLE_DETAIL_COLUMNS = ("destinations", "party_size", "budget_planned", "budget_total")
+
+
+def update_trip_details(conn: psycopg.Connection, trip_id: int, fields: dict) -> Trip:
+    """Partial update - only the keys present in `fields` are written."""
+    unknown = set(fields) - set(UPDATABLE_DETAIL_COLUMNS)
+    if unknown or not fields:
+        raise ValueError(f"fields must be a non-empty subset of {UPDATABLE_DETAIL_COLUMNS}")
+    # Column names come from the fixed allow-list above, never from input.
+    assignments = ", ".join(f"{col} = %s" for col in fields)
+    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        cur.execute(
+            f"UPDATE trips SET {assignments}, updated_at = now() WHERE id = %s RETURNING *",
+            (*fields.values(), trip_id),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    if row is None:
+        raise TripNotFoundError(f"no trip with id {trip_id}")
+    return _to_trip(row)
 
 
 def get_trip(conn: psycopg.Connection, trip_id: int) -> Trip:
@@ -111,4 +142,4 @@ def get_trip(conn: psycopg.Connection, trip_id: int) -> Trip:
         row = cur.fetchone()
     if row is None:
         raise TripNotFoundError(f"no trip with id {trip_id}")
-    return Trip(**row)
+    return _to_trip(row)

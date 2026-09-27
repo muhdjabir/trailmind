@@ -53,8 +53,9 @@ CREATE TABLE IF NOT EXISTS trips (
     -- exists, kept now so adding auth later isn't a breaking migration.
     user_id TEXT,
     name TEXT NOT NULL,
-    -- Slugs from app.destinations.KNOWN_DESTINATIONS; not FK-constrained
-    -- since that's an app-level list, not a DB table.
+    -- KNOWN_DESTINATIONS slugs where the place is in the curated guide,
+    -- otherwise a free-text place name (weather geocodes it, search_web
+    -- covers the rest) - normalized in app/services/trip_service.py.
     destinations TEXT[] NOT NULL DEFAULT '{}',
     start_date DATE,
     end_date DATE,
