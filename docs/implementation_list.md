@@ -367,9 +367,28 @@ of the retrieval/hallucination fixes.
     doesn't make the model move an existing "departure" day, so
     departure can end up before the new last day.
     159 tests total pass.
-20a. Surface agent-initiated itinerary diffs to the UI (e.g. "Just added")
+20a. ✅ Surface agent-initiated itinerary diffs to the UI (e.g. "Just added")
     — a way for the frontend to know *what changed* in the itinerary
     after a turn, not just fetch the new state wholesale.
+    — Done entirely in the frontend, no API change: `page.tsx` keeps the
+    itinerary as it was when a message is sent, re-fetches it after the
+    reply, and `web/app/lib/itineraryDiff.ts` compares the two - a new
+    day number is "Just added", a changed `updated_at` (bumped on every
+    save by `upsert_day`) is "Updated". The step 20 plan was to have
+    `/chat` return `changed_days`, but the page already re-fetched the
+    itinerary after every reply, so diffing that was simpler and kept
+    `run_agent`'s return type unchanged. `ItineraryPanel` renders the
+    mockup's highlighted card + badge. Badges last until the next message
+    or trip switch, so they always mean "the last reply did this".
+    Removed days get no badge (no card left to mark); the reply text
+    covers those. Also fixed a race from step 20: switching trips while a
+    reply was in flight could load the old trip's itinerary into the
+    panel - `activeTripRef` now drops stale results. (Chat messages have
+    the same latent race - a reply can land in the newly selected trip's
+    chat view - not fixed here.)
+    Verified in a real browser: planning 3 days badged all 3 "Just
+    added"; "add a cooking class to day 2" badged only day 2 "Updated";
+    a plain question cleared all badges.
 21. Confirm agent picks correct tool per query type
 22. Confirm itinerary state survives across turns/sessions
 22a. Compute aggregated trip stats from itinerary state (e.g. total

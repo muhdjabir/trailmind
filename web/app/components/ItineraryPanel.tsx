@@ -1,7 +1,9 @@
-// "Just added" highlighting (step 20a) and "Export to calendar" (step
-// 22c) aren't wired yet - the export button is inert.
+// "Export to calendar" (step 22c) isn't wired yet - the button is inert.
 
+import type { DayChange } from "../lib/itineraryDiff";
 import type { ItineraryDay } from "../lib/types";
+
+const BADGE: Record<DayChange, string> = { added: "Just added", updated: "Updated" };
 
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
@@ -16,9 +18,10 @@ function dayLabel(day: ItineraryDay): { big: string; small: string } {
 type Props = {
   hasTrip: boolean;
   days: ItineraryDay[];
+  changes: Record<number, DayChange>;
 };
 
-export function ItineraryPanel({ hasTrip, days }: Props) {
+export function ItineraryPanel({ hasTrip, days, changes }: Props) {
   return (
     <aside className="flex w-80 flex-shrink-0 flex-col border-l border-[#e2e0da] bg-[#f1efec] px-5 py-6">
       <div className="mb-4 flex items-baseline justify-between">
@@ -40,16 +43,28 @@ export function ItineraryPanel({ hasTrip, days }: Props) {
         ) : (
           days.map((d) => {
             const label = dayLabel(d);
+            const change = changes[d.day_number];
+            const accent = change ? "text-[#e2492f]" : "";
             return (
-              <div key={d.day_number} className="flex gap-3 rounded-xl bg-white p-3">
+              <div
+                key={d.day_number}
+                className={`flex gap-3 rounded-xl p-3 ${change ? "bg-[#fbe7e2]" : "bg-white"}`}
+              >
                 <div className="flex w-9 flex-shrink-0 flex-col items-center">
-                  <span className="text-2xl font-bold">{label.big}</span>
-                  <span className="text-[10px] font-semibold text-[#8a8984]">{label.small}</span>
+                  <span className={`text-2xl font-bold ${accent}`}>{label.big}</span>
+                  <span className={`text-[10px] font-semibold ${change ? accent : "text-[#8a8984]"}`}>
+                    {label.small}
+                  </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">{d.title}</p>
+                  <p className={`text-sm font-semibold ${accent}`}>{d.title}</p>
                   {d.items.length > 0 && (
                     <p className="text-xs text-[#8a8984]">{d.items.join(" · ")}</p>
+                  )}
+                  {change && (
+                    <span className="mt-1.5 inline-block rounded-full border border-[#e2492f] px-2 py-0.5 text-[10px] font-semibold text-[#e2492f]">
+                      {BADGE[change]}
+                    </span>
                   )}
                 </div>
               </div>

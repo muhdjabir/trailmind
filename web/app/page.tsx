@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ItineraryPanel } from "./components/ItineraryPanel";
 import { Sidebar } from "./components/Sidebar";
+import { diffItinerary, type DayChange } from "./lib/itineraryDiff";
 import type { ItineraryDay, Trip } from "./lib/types";
 
 type Message = {
@@ -35,14 +36,24 @@ export default function Home() {
   const [tripsLoading, setTripsLoading] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
+  // Days the agent changed in the latest turn - cleared on the next send
+  // or trip switch, so the badges mean "this reply did that".
+  const [dayChanges, setDayChanges] = useState<Record<number, DayChange>>({});
+  // Lets async results from a previous trip's request be ignored after
+  // the user has switched trips.
+  const activeTripRef = useRef<number | null>(null);
 
-  async function loadItinerary(tripId: number) {
+  async function loadItinerary(tripId: number): Promise<ItineraryDay[] | null> {
     try {
       const res = await fetch(`${API_URL}/trips/${tripId}/itinerary`);
-      if (!res.ok) return;
-      setItinerary(await res.json());
+      if (!res.ok || activeTripRef.current !== tripId) return null;
+      const days: ItineraryDay[] = await res.json();
+      if (activeTripRef.current !== tripId) return null;
+      setItinerary(days);
+      return days;
     } catch {
       // Keep whatever's shown rather than blanking the panel on a blip.
+      return null;
     }
   }
 
@@ -66,9 +77,11 @@ export default function Home() {
   }, []);
 
   async function selectTrip(id: number) {
+    activeTripRef.current = id;
     setSelectedTripId(id);
     setMessages([]);
     setItinerary([]);
+    setDayChanges({});
     loadItinerary(id);
     try {
       const res = await fetch(`${API_URL}/trips/${id}/messages`);
@@ -95,9 +108,11 @@ export default function Home() {
       if (!res.ok) throw new Error(`request failed (${res.status})`);
       const created: Trip = await res.json();
       setTrips((prev) => [created, ...prev]);
+      activeTripRef.current = created.id;
       setSelectedTripId(created.id);
       setMessages([]);
       setItinerary([]);
+      setDayChanges({});
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -113,12 +128,15 @@ export default function Home() {
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setInput("");
     setLoading(true);
+    setDayChanges({});
+    const tripId = selectedTripId;
+    const itineraryBefore = itinerary;
 
     try {
       const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, trip_id: selectedTripId }),
+        body: JSON.stringify({ message: trimmed, trip_id: tripId }),
       });
 
       if (!res.ok) {
@@ -129,9 +147,10 @@ export default function Home() {
       const data = await res.json();
       setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
       // The agent may have changed itinerary days or trip dates this turn.
-      if (selectedTripId !== null) {
-        loadItinerary(selectedTripId);
-        refreshTrip(selectedTripId);
+      if (tripId !== null) {
+        refreshTrip(tripId);
+        const itineraryAfter = await loadItinerary(tripId);
+        if (itineraryAfter) setDayChanges(diffItinerary(itineraryBefore, itineraryAfter));
       }
     } catch (err) {
       setMessages((prev) => [
@@ -254,7 +273,7 @@ export default function Home() {
         </div>
       </main>
 
-      <ItineraryPanel hasTrip={selectedTripId !== null} days={itinerary} />
+      <ItineraryPanel hasTrip={selectedTripId !== null} days={itinerary} changes={dayChanges} />
     </div>
   );
 }
