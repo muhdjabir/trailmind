@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.repositories.chat_history_repo import append_message
 from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
 pytestmark = pytest.mark.integration
@@ -17,7 +18,7 @@ def _cleanup():
         conn = get_connection()
     except VectorStoreError as e:
         pytest.skip(f"local postgres not reachable: {e}")
-    yield
+    yield conn
     with conn.cursor() as cur:
         cur.execute("DELETE FROM trips WHERE name LIKE %s", (f"{TEST_NAME_PREFIX}%",))
     conn.commit()
@@ -52,3 +53,30 @@ def test_list_trips_includes_created_trip() -> None:
 
     assert response.status_code == 200
     assert any(t["id"] == created["id"] for t in response.json())
+
+
+def test_list_trip_messages_returns_persisted_history(_cleanup) -> None:
+    created = client.post("/trips", json={"name": f"{TEST_NAME_PREFIX} history"}).json()
+    append_message(_cleanup, created["id"], "user", "earlier question")
+    append_message(_cleanup, created["id"], "assistant", "earlier answer")
+
+    response = client.get(f"/trips/{created['id']}/messages")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [m["role"] for m in body] == ["user", "assistant"]
+    assert [m["content"] for m in body] == ["earlier question", "earlier answer"]
+
+
+def test_list_trip_messages_empty_for_trip_with_no_history() -> None:
+    created = client.post("/trips", json={"name": f"{TEST_NAME_PREFIX} no history"}).json()
+
+    response = client.get(f"/trips/{created['id']}/messages")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_trip_messages_returns_404_for_unknown_trip() -> None:
+    response = client.get("/trips/9999999/messages")
+    assert response.status_code == 404

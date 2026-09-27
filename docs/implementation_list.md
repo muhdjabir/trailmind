@@ -128,11 +128,27 @@ of the retrieval/hallucination fixes.
     separate endpoint. Wired to `POST /trips`, `GET /trips`,
     `GET /trips/{id}` in `agent/app/api/trips.py`.
     `user_id` filtering exists in `list_trips` but nothing sets it yet
-    (no auth). Scoped to backend only for now — the sidebar/"New trip"
-    button in the UI stay static demo chrome until a later step wires
-    them up. Unit + integration tests in `tests/test_trips_repo.py` and
+    (no auth). Unit + integration tests in `tests/test_trips_repo.py` and
     `tests/test_main_trips.py`; also verified live against the running
     `trailmind-agent` container (create/list/404-on-missing all correct).
+    — **UI wiring** (done after this and step 16 landed): `Sidebar.tsx`
+    now fetches `GET /trips` and renders the real list instead of the
+    mockup's static "Planning"/"Past" rows (that split isn't backed by
+    any schema field, so it collapsed to one "Your trips" list); "+ New
+    trip" is a small inline form (name only) that `POST`s and selects
+    the new trip. `page.tsx` owns `selectedTripId` and passes it as
+    `trip_id` on every `/chat` call, and the header now shows the
+    selected trip's real name/status/budget instead of the mockup's
+    "Lisbon & Porto". Selecting a trip also needed reading back its
+    saved conversation, which nothing exposed yet, so added
+    `GET /trips/{id}/messages` (404s on an unknown trip, same as
+    `GET /trips/{id}`) backed by the existing `chat_history_repo.list_messages`.
+    `ItineraryPanel` stays static - no itinerary-day endpoints exist yet
+    (that's step 20). Verified in a real browser: created a trip via the
+    inline form, asked it a question (correctly got the honest
+    "no_information_found" refusal for empty-corpus Bangkok, per step
+    14's fix), switched to a second trip and back, and the first trip's
+    full prior exchange reloaded correctly from `chat_messages`.
 16. ✅ Wire trip state read/write into agent context (compact summary per turn, not full history)
     — also needs the chat *history* itself persisted per trip (today
     every message is independent - see `agent/app/services/chat_service.py::run_agent()`),

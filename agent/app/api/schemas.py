@@ -6,6 +6,7 @@ import datetime
 
 from pydantic import BaseModel
 
+from app.repositories.chat_history_repo import ChatMessage
 from app.repositories.trips_repo import Trip
 
 
@@ -45,3 +46,13 @@ class TripResponse(BaseModel):
     @classmethod
     def from_trip(cls, trip: Trip) -> "TripResponse":
         return cls(**trip.__dict__)
+
+
+class ChatMessageResponse(BaseModel):
+    role: str
+    content: str
+    created_at: datetime.datetime
+
+    @classmethod
+    def from_message(cls, message: ChatMessage) -> "ChatMessageResponse":
+        return cls(role=message.role, content=message.content, created_at=message.created_at)

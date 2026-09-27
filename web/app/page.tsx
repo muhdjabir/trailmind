@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ItineraryPanel } from "./components/ItineraryPanel";
 import { Sidebar } from "./components/Sidebar";
+import type { Trip } from "./lib/types";
 
 type Message = {
   role: "user" | "assistant" | "error";
@@ -30,6 +31,56 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [tripsLoading, setTripsLoading] = useState(true);
+  const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/trips`)
+      .then((res) => res.json())
+      .then((data: Trip[]) => setTrips(data))
+      .catch(() => setTrips([]))
+      .finally(() => setTripsLoading(false));
+  }, []);
+
+  async function selectTrip(id: number) {
+    setSelectedTripId(id);
+    setMessages([]);
+    try {
+      const res = await fetch(`${API_URL}/trips/${id}/messages`);
+      if (!res.ok) return;
+      const history: { role: string; content: string }[] = await res.json();
+      setMessages(
+        history.map((m) => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          content: m.content,
+        })),
+      );
+    } catch {
+      // Leave the chat empty rather than blocking trip selection on this.
+    }
+  }
+
+  async function createTrip(name: string) {
+    try {
+      const res = await fetch(`${API_URL}/trips`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error(`request failed (${res.status})`);
+      const created: Trip = await res.json();
+      setTrips((prev) => [created, ...prev]);
+      setSelectedTripId(created.id);
+      setMessages([]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "error", content: err instanceof Error ? err.message : String(err) },
+      ]);
+    }
+  }
+
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
@@ -42,7 +93,7 @@ export default function Home() {
       const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed }),
+        body: JSON.stringify({ message: trimmed, trip_id: selectedTripId }),
       });
 
       if (!res.ok) {
@@ -67,21 +118,38 @@ export default function Home() {
     send(input);
   }
 
+  const selectedTrip = trips.find((t) => t.id === selectedTripId) ?? null;
+
   return (
     <div className="flex h-screen bg-[#f1efec] text-[#171717]">
-      <Sidebar />
+      <Sidebar
+        trips={trips}
+        selectedTripId={selectedTripId}
+        loading={tripsLoading}
+        onSelect={selectTrip}
+        onCreate={createTrip}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col bg-[#faf9f7]">
-        {/* Static demo header matching the mockup - not derived from the
-            live conversation below (no trip/budget backend yet, v1). */}
         <header className="flex items-center justify-between border-b border-[#e2e0da] px-8 py-5">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold">Lisbon &amp; Porto</h1>
-            <span className="rounded-full bg-[#fbe7e2] px-3 py-1 text-xs font-semibold text-[#e2492f]">
-              Draft itinerary
-            </span>
-          </div>
-          <p className="text-sm text-[#8a8984]">Budget €2,400 · €1,860 planned</p>
+          {selectedTrip ? (
+            <>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-bold">{selectedTrip.name}</h1>
+                <span className="rounded-full bg-[#fbe7e2] px-3 py-1 text-xs font-semibold text-[#e2492f]">
+                  {selectedTrip.status}
+                </span>
+              </div>
+              {(selectedTrip.budget_planned || selectedTrip.budget_total) && (
+                <p className="text-sm text-[#8a8984]">
+                  Budget {selectedTrip.budget_total ?? "?"} · {selectedTrip.budget_planned ?? "?"}{" "}
+                  planned
+                </p>
+              )}
+            </>
+          ) : (
+            <h1 className="text-sm text-[#8a8984]">Select or create a trip to get started</h1>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto px-8 py-6">

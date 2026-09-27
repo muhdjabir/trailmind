@@ -1,16 +1,37 @@
-// Static demo content matching the "Trip Planner Chat v2" design mockup.
-// Not wired to a real backend yet - trip creation/persistence is v1
-// (see docs/implementation_list.md steps 15-16). Buttons here are inert.
+"use client";
 
-const PLANNING_TRIPS = [
-  { name: "Lisbon & Porto", detail: "12–17 Oct · 2 people", active: true },
-  { name: "Kyoto in spring", detail: "Dates open", active: false },
-  { name: "Dolomites hut-to-hut", detail: "Jul 2027 · 4 people", active: false },
-];
+import { useState } from "react";
+import type { Trip } from "../lib/types";
 
-const PAST_TRIPS = ["Copenhagen weekend", "Mexico City"];
+type SidebarProps = {
+  trips: Trip[];
+  selectedTripId: number | null;
+  loading: boolean;
+  onSelect: (id: number) => void;
+  onCreate: (name: string) => void;
+};
 
-export function Sidebar() {
+function tripDetail(t: Trip): string {
+  const parts: string[] = [];
+  if (t.destinations.length > 0) parts.push(t.destinations.join(", "));
+  if (t.start_date && t.end_date) parts.push(`${t.start_date} – ${t.end_date}`);
+  if (t.party_size) parts.push(`${t.party_size} people`);
+  return parts.length > 0 ? parts.join(" · ") : "No details yet";
+}
+
+export function Sidebar({ trips, selectedTripId, loading, onSelect, onCreate }: SidebarProps) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+
+  function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onCreate(trimmed);
+    setName("");
+    setCreating(false);
+  }
+
   return (
     <aside className="flex w-72 flex-shrink-0 flex-col border-r border-[#e2e0da] bg-[#f1efec] px-5 py-6">
       <div className="mb-6 flex items-center gap-2">
@@ -18,31 +39,65 @@ export function Sidebar() {
         <span className="text-lg font-bold">Trailmind</span>
       </div>
 
-      <button
-        type="button"
-        className="mb-6 rounded-xl bg-[#e2492f] py-3 text-sm font-bold text-white"
-      >
-        + New trip
-      </button>
+      {creating ? (
+        <form onSubmit={handleCreate} className="mb-6 flex flex-col gap-2">
+          <input
+            autoFocus
+            className="rounded-xl bg-white px-3 py-2.5 text-sm outline-none placeholder:text-[#8a8984]"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Trip name..."
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setCreating(false);
+            }}
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="flex-1 rounded-xl bg-[#e2492f] py-2 text-sm font-bold text-white disabled:opacity-50"
+              disabled={!name.trim()}
+            >
+              Create
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreating(false)}
+              className="rounded-xl border border-[#8a8984] px-3 py-2 text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="mb-6 rounded-xl bg-[#e2492f] py-3 text-sm font-bold text-white"
+        >
+          + New trip
+        </button>
+      )}
 
       <p className="mb-2 text-xs font-semibold tracking-wider text-[#8a8984] uppercase">
-        Planning
+        Your trips
       </p>
-      <div className="mb-6 flex flex-col gap-1">
-        {PLANNING_TRIPS.map((t) => (
-          <div key={t.name} className={`rounded-xl px-3 py-2.5 ${t.active ? "bg-[#e6e4df]" : ""}`}>
+      <div className="flex flex-col gap-1 overflow-y-auto">
+        {loading && <p className="px-3 py-2.5 text-sm text-[#8a8984]">Loading...</p>}
+        {!loading && trips.length === 0 && (
+          <p className="px-3 py-2.5 text-sm text-[#8a8984]">No trips yet - create one above.</p>
+        )}
+        {trips.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onSelect(t.id)}
+            className={`rounded-xl px-3 py-2.5 text-left ${
+              t.id === selectedTripId ? "bg-[#e6e4df]" : "hover:bg-[#e6e4df]/60"
+            }`}
+          >
             <p className="text-sm font-semibold">{t.name}</p>
-            <p className="text-xs text-[#8a8984]">{t.detail}</p>
-          </div>
-        ))}
-      </div>
-
-      <p className="mb-2 text-xs font-semibold tracking-wider text-[#8a8984] uppercase">Past</p>
-      <div className="flex flex-col gap-1">
-        {PAST_TRIPS.map((name) => (
-          <div key={name} className="rounded-xl px-3 py-2.5">
-            <p className="text-sm font-semibold">{name}</p>
-          </div>
+            <p className="text-xs text-[#8a8984]">{tripDetail(t)}</p>
+          </button>
         ))}
       </div>
     </aside>
