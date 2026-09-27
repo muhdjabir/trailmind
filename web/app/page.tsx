@@ -1,11 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ItineraryPanel } from "./components/ItineraryPanel";
 import { Sidebar } from "./components/Sidebar";
 import { diffItinerary, type DayChange } from "./lib/itineraryDiff";
+import { displayNameOf, supabase } from "./lib/supabase";
 import type { ItineraryDay, Trip, TripStats } from "./lib/types";
 
 type Message = {
@@ -47,6 +49,31 @@ export default function Home() {
   // Lets async results from a previous trip's request be ignored after
   // the user has switched trips.
   const activeTripRef = useRef<number | null>(null);
+
+  const router = useRouter();
+  const [accountName, setAccountName] = useState<string | null>(null);
+  // Without Supabase configured there's nothing to check - see lib/supabase.ts.
+  const [authChecked, setAuthChecked] = useState(!supabase);
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.replace("/signin");
+        return;
+      }
+      setAccountName(displayNameOf(data.session.user));
+      setAuthChecked(true);
+    });
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") router.replace("/signin");
+    });
+    return () => data.subscription.unsubscribe();
+  }, [router]);
+
+  async function signOut() {
+    await supabase?.auth.signOut();
+  }
 
   async function loadItinerary(tripId: number): Promise<ItineraryDay[] | null> {
     try {
@@ -197,6 +224,10 @@ export default function Home() {
   const suggestions =
     selectedTripId === null ? NO_TRIP_SUGGESTIONS : (stats?.suggestions ?? []);
 
+  // Blank until the session check resolves, so a signed-out visitor never
+  // sees the planner flash before the redirect to /signin.
+  if (!authChecked) return <div className="h-screen bg-[#f1efec]" />;
+
   return (
     <div className="flex h-screen bg-[#f1efec] text-[#171717]">
       <Sidebar
@@ -205,6 +236,8 @@ export default function Home() {
         loading={tripsLoading}
         onSelect={selectTrip}
         onCreate={createTrip}
+        accountName={accountName}
+        onSignOut={signOut}
       />
 
       <main className="flex min-w-0 flex-1 flex-col bg-[#faf9f7]">

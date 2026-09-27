@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { initialsOf } from "../lib/supabase";
 import type { Trip } from "../lib/types";
 
 type SidebarProps = {
@@ -9,6 +10,9 @@ type SidebarProps = {
   loading: boolean;
   onSelect: (id: number) => void;
   onCreate: (name: string) => void;
+  // null when signed out or auth isn't configured - no account row then.
+  accountName: string | null;
+  onSignOut: () => void;
 };
 
 function tripDetail(t: Trip): string {
@@ -19,7 +23,15 @@ function tripDetail(t: Trip): string {
   return parts.length > 0 ? parts.join(" · ") : "No details yet";
 }
 
-export function Sidebar({ trips, selectedTripId, loading, onSelect, onCreate }: SidebarProps) {
+export function Sidebar({
+  trips,
+  selectedTripId,
+  loading,
+  onSelect,
+  onCreate,
+  accountName,
+  onSignOut,
+}: SidebarProps) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
 
@@ -100,6 +112,18 @@ export function Sidebar({ trips, selectedTripId, loading, onSelect, onCreate }: 
           </button>
         ))}
       </div>
+
+      {accountName && (
+        <div className="mt-auto flex items-center gap-3 border-t border-[#e2e0da] pt-4">
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#171717] text-xs font-bold text-white">
+            {initialsOf(accountName)}
+          </span>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold">{accountName}</p>
+          <button type="button" onClick={onSignOut} className="text-xs text-[#8a8984] hover:text-[#171717]">
+            Sign out
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

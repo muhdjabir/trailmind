@@ -544,6 +544,30 @@ of the retrieval/hallucination fixes.
       table, argon2, httpOnly session cookie). No external service, and
       a cookie would make the ICS link just work - but we'd own all the
       security details and likely redo it on the Supabase move.
+    — **Progress: auth UI done** (backend enforcement still to do).
+    `/signin`, `/register`, `/forgot-password`, `/reset-password` built
+    from the mockups with `@supabase/supabase-js` (`web/app/lib/supabase.ts`,
+    `web/app/components/auth/`): email+password, Google, the register
+    strength meter (min 8 chars, `web/app/lib/password.ts`), name saved
+    to user metadata, email-confirmation "check your inbox" state, and a
+    reset page that sets the new password from the email link. The
+    planner redirects to `/signin` without a session and shows the
+    account + "Sign out" at the bottom of the sidebar. Deviations from
+    the mockups: no Apple buttons; the register panel's "compare
+    stays/trains" and "share a trip with a link" cards swapped for
+    features that exist (weather, calendar export); the Terms/Privacy
+    line dropped (no such pages yet); striped placeholder instead of the
+    destination photo.
+    Config: `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+    in the root `.env` → `docker-compose.yml`. With them unset, the auth
+    screens show a setup notice and the planner isn't gated - fine
+    because the real lock is the backend work below, not the UI.
+    Verified in a browser without a Supabase project: desktop and
+    phone-width layouts match the mockups, the meter reads "Add 2 more
+    characters" at 6 characters, and the planner still loads. Actual
+    sign-in/sign-up flows are untested until a project is configured.
+    Still to do: API calls don't send the JWT yet, and FastAPI doesn't
+    verify it or filter trips by owner (bullets above).
 
 **Checkpoint:** agent correctly routes across all tools; state persists.
 (15a, 19a, 20a, 22a-c added after reviewing the step 11a UI mockup —

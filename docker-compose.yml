@@ -48,6 +48,10 @@ services:
       - agent
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      # From the repo-root .env (gitignored). Empty = auth screens show a
+      # setup notice and the planner isn't gated (see web/app/lib/supabase.ts).
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
     ports:
       - "3000:3000"
     volumes:
