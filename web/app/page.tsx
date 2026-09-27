@@ -188,6 +188,10 @@ export default function Home() {
   }
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) ?? null;
+  const exportUrl =
+    selectedTrip?.start_date && itinerary.length > 0
+      ? `${API_URL}/trips/${selectedTrip.id}/itinerary.ics`
+      : null;
   // No chips while a trip's stats are loading, rather than flashing
   // generic ones that don't fit the trip.
   const suggestions =
@@ -297,7 +301,10 @@ export default function Home() {
         </div>
       </main>
 
-      <ItineraryPanel hasTrip={selectedTripId !== null} days={itinerary} changes={dayChanges} stats={stats} />
+      <ItineraryPanel hasTrip={selectedTripId !== null} days={itinerary} changes={dayChanges}
+        stats={stats}
+        exportUrl={exportUrl}
+      />
     </div>
   );
 }

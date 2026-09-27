@@ -155,3 +155,30 @@ def test_stats_for_dated_trip_with_days(_cleanup) -> None:
 
 def test_stats_returns_404_for_unknown_trip() -> None:
     assert client.get("/trips/9999999/stats").status_code == 404
+
+
+def test_calendar_export_returns_ics_attachment(_cleanup) -> None:
+    created = client.post(
+        "/trips",
+        json={"name": f"{TEST_NAME_PREFIX} Hoi An!", "start_date": "2026-11-06",
+              "end_date": "2026-11-09"},
+    ).json()
+    upsert_day(_cleanup, created["id"], 2, {"title": "Food tour", "items": ["Market"]})
+
+    response = client.get(f"/trips/{created['id']}/itinerary.ics")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/calendar")
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="test-trip-api-hoi-an.ics"'
+    )
+    assert "DTSTART;VALUE=DATE:20261107" in response.text
+
+
+def test_calendar_export_409_when_trip_has_no_dates() -> None:
+    created = client.post("/trips", json={"name": f"{TEST_NAME_PREFIX} undated"}).json()
+    assert client.get(f"/trips/{created['id']}/itinerary.ics").status_code == 409
+
+
+def test_calendar_export_404_for_unknown_trip() -> None:
+    assert client.get("/trips/9999999/itinerary.ics").status_code == 404

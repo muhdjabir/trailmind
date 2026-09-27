@@ -1,5 +1,3 @@
-// "Export to calendar" (step 22c) isn't wired yet - the button is inert.
-
 import type { DayChange } from "../lib/itineraryDiff";
 import type { ItineraryDay, TripStats } from "../lib/types";
 import { TripStatsCards } from "./TripStatsCards";
@@ -21,9 +19,11 @@ type Props = {
   days: ItineraryDay[];
   changes: Record<number, DayChange>;
   stats: TripStats | null;
+  // The .ics download link, or null while the trip can't be exported.
+  exportUrl: string | null;
 };
 
-export function ItineraryPanel({ hasTrip, days, changes, stats }: Props) {
+export function ItineraryPanel({ hasTrip, days, changes, stats, exportUrl }: Props) {
   return (
     <aside className="flex w-80 flex-shrink-0 flex-col border-l border-[#e2e0da] bg-[#f1efec] px-5 py-6">
       <div className="mb-4 flex items-baseline justify-between">
@@ -77,9 +77,23 @@ export function ItineraryPanel({ hasTrip, days, changes, stats }: Props) {
         )}
       </div>
 
-      <button type="button" className="mt-4 rounded-xl border border-[#8a8984] py-3 text-sm font-semibold">
-        Export to calendar
-      </button>
+      {exportUrl ? (
+        <a
+          href={exportUrl}
+          className="mt-4 rounded-xl border border-[#8a8984] py-3 text-center text-sm font-semibold hover:bg-white"
+        >
+          Export to calendar
+        </a>
+      ) : (
+        <button
+          type="button"
+          disabled
+          title={hasTrip ? "Needs trip dates and at least one planned day" : "Select a trip first"}
+          className="mt-4 cursor-not-allowed rounded-xl border border-[#d6d4ce] py-3 text-sm font-semibold text-[#b5b3ad]"
+        >
+          Export to calendar
+        </button>
+      )}
     </aside>
   );
 }

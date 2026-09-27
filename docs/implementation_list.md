@@ -473,7 +473,26 @@ of the retrieval/hallucination fixes.
     `update_trip_dates` (about 1 in 4 multi-detail first messages) - the
     same "says it, doesn't save it" pattern as before.
     198 tests total pass.
-22c. Calendar export (ICS) generated from stored itinerary.
+22c. ✅ Calendar export (ICS) generated from stored itinerary.
+    — `services/calendar_service.py::build_trip_ics()` → `GET
+    /trips/{id}/itinerary.ics` (`text/calendar` attachment, filename from
+    the trip name). One all-day event per saved day on its derived date,
+    "Day N: title", items as the description, destinations as the
+    location. UIDs are stable per trip+day, so re-importing updates events
+    rather than duplicating them. Hand-rolled (no dependency): CRLF line
+    endings, RFC 5545 text escaping, 75-octet folding that never splits a
+    UTF-8 character. An undated trip → 409 (its days have no dates).
+    The panel's "Export to calendar" is now a download link, disabled
+    with a tooltip until the trip has dates and at least one saved day.
+    Verified: a real export parsed cleanly with the `icalendar` library
+    (installed only in a scratch dir for the check) - escaped `;`,
+    multi-line description and "Phở" all round-tripped, and day 3 landed
+    on the trip's third date; in the browser the button linked to the
+    right `.ics` for a dated trip and was disabled for an undated one
+    (the download itself was checked via curl, not clicked).
+    Note: the dev agent container once reloaded between two quick edits
+    to `api/trips.py` and served a half-updated module (NameError) until
+    restarted - a hot-reload quirk, not a code bug.
 23. Expand destination corpus + eval set to remaining destinations (Bangkok, Almaty, Tokyo/Fuji/Hiroshima)
 
 **Checkpoint:** agent correctly routes across all tools; state persists.
