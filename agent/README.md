@@ -53,8 +53,9 @@ Supabase later).
 
 ## Agent
 
-The chat loop lives in `app/agent.py::run_agent()`, wired up at
-`POST /chat` (`{"message": "..."}` -> `{"reply": "..."}`). It's a
+The chat loop lives in `app/services/chat_service.py::run_agent()`,
+wired up at `POST /chat` (`{"message": "..."}` -> `{"reply": "..."}`,
+`api/chat.py`). It's a
 single-agent tool-calling loop over `search_destination_knowledge`:
 the LLM decides when to call the tool, the tool result is fed back
 into the conversation, and the LLM's next turn produces the final

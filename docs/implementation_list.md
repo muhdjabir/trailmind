@@ -12,14 +12,14 @@
 5. ✅ Stand up vector store (pgvector or FAISS) with metadata (source URL, destination, doc type)
    — pgvector via `docker-compose.yml`, schema in `database/schema.sql`
 6. ✅ Implement naive top-k retrieval
-   — `agent/app/retrieval.py::retrieve()`
+   — `agent/app/services/retrieval_service.py::retrieve()`
 7. ✅ Add metadata filtering (destination) before vector search
    — done as part of step 5/6: `search()` filters by `destination` in the same query
 8. Add reranking (bge-reranker-base or LLM call, top 20 → top 5)
 9. ✅ Wrap retrieval as `search_destination_knowledge(destination, query)` tool
-   — `agent/app/tools.py`; raises `UnknownDestinationError` for out-of-scope destinations, propagates typed embedding/DB errors unwrapped
+   — `agent/app/services/knowledge_service.py`; raises `UnknownDestinationError` for out-of-scope destinations, propagates typed embedding/DB errors unwrapped
 10. ✅ Stand up Python/FastAPI service with single agent + this tool
-    — `POST /chat` wired to `agent/app/agent.py::run_agent()`; LLM is local via Ollama (`gemma4:latest`, `agent/app/llm.py`), pluggable for Claude API later. Verified end-to-end: correctly grounds answers in retrieved chunks, and declines out-of-scope destinations (e.g. Bali) instead of hallucinating.
+    — `POST /chat` wired to `agent/app/services/chat_service.py::run_agent()`; LLM is local via Ollama (`gemma4:latest`, `agent/app/llm.py`), pluggable for Claude API later. Verified end-to-end: correctly grounds answers in retrieved chunks, and declines out-of-scope destinations (e.g. Bali) instead of hallucinating.
 11. ✅ Build barebones Next.js chat UI, wire to FastAPI (unstyled OK)
     — `web/app/page.tsx`; single-turn per message (no server-side chat history yet). Verified end-to-end in a real browser via CORS-enabled `POST /chat`.
 11a. ✅ Update the chat UI to match the "Trip Planner Chat v2" design mockup (desktop, "1a" variant)
@@ -59,13 +59,13 @@
     - **Hallucination: found a real one.** q19 (Bangkok — a known destination with zero corpus chunks loaded) got a confident, plausible-sounding answer (specific dishes, general claims) instead of an honest "I don't have specifics" — the empty-tool-result signal wasn't strong enough to stop the LLM falling back on its own pretraining. q18 (Bali — fully unknown destination) correctly refused, since `UnknownDestinationError` is a much stronger, unambiguous signal than an empty list.
     - Manually reviewing the "misses" surfaced two more findings the heuristic score alone wouldn't show: q10 was actually a *good* answer (correctly said it didn't have a specific price rather than inventing one — the "miss" was just that pricing chunk not making top-5, not a hallucination); q04 revealed a real corpus-modeling gap — `da_nang_hoi_an` bundles two distinct cities under one destination, so a Hoi An-specific query has no metadata filter to exclude Da Nang content, and here it answered with a Da Nang shop instead of the Hoi An one.
     - **Findings status:**
-      1. ✅ Empty-tool-result hallucination (q19) — `_run_tool` in `agent/app/agent.py`
+      1. ✅ Empty-tool-result hallucination (q19) — `_run_tool` in `agent/app/services/chat_service.py`
          now returns `{"no_information_found": True, "message": ...}` instead of
          `{"snippets": []}` on a zero-result search, and `SYSTEM_PROMPT` explicitly
          tells the LLM this means "the knowledge base doesn't cover this, even for
          a known destination" rather than a cue to fall back on pretraining.
          Covered by `test_zero_snippets_fed_back_as_explicit_no_information_signal`
-         in `agent/tests/test_agent.py`, and confirmed live via `run_eval.py --id
+         in `agent/tests/test_chat_service.py`, and confirmed live via `run_eval.py --id
          q19`: `zero_snippets_returned=True` and the reply now honestly says it
          doesn't have specifics on Bangkok street food instead of inventing dishes.
       2. ✅ City-conflation within `da_nang_hoi_an` (q04) — added `country`/`city`
@@ -119,31 +119,32 @@ of the retrieval/hallucination fixes.
 15a. ✅ Trip CRUD: create/list/switch between a user's trips
     — backs the sidebar's trip list and "New trip" button (currently
     static demo chrome, see step 11a).
-    — `agent/app/trips.py`: `create_trip`/`list_trips`/`get_trip` against
+    — `agent/app/repositories/trips_repo.py`: `create_trip`/`list_trips`/`get_trip` against
     the `trips` table; `get_trip` raises `TripNotFoundError` for an
-    unknown id (matches the typed-error convention in CLAUDE.md/`tools.py`
-    — a lookup by id has a real "doesn't exist" failure mode, unlike
-    `list_trips`, where empty is just a normal result). "Switch" is just
-    the frontend re-fetching by id — no separate endpoint. Wired to
-    `POST /trips`, `GET /trips`, `GET /trips/{id}` in `agent/app/main.py`.
+    unknown id (matches the typed-error convention in CLAUDE.md/
+    `knowledge_service.py` — a lookup by id has a real "doesn't exist"
+    failure mode, unlike `list_trips`, where empty is just a normal
+    result). "Switch" is just the frontend re-fetching by id — no
+    separate endpoint. Wired to `POST /trips`, `GET /trips`,
+    `GET /trips/{id}` in `agent/app/api/trips.py`.
     `user_id` filtering exists in `list_trips` but nothing sets it yet
     (no auth). Scoped to backend only for now — the sidebar/"New trip"
     button in the UI stay static demo chrome until a later step wires
-    them up. Unit + integration tests in `tests/test_trips.py` and
+    them up. Unit + integration tests in `tests/test_trips_repo.py` and
     `tests/test_main_trips.py`; also verified live against the running
     `trailmind-agent` container (create/list/404-on-missing all correct).
 16. ✅ Wire trip state read/write into agent context (compact summary per turn, not full history)
     — also needs the chat *history* itself persisted per trip (today
-    every message is independent - see `agent/app/agent.py::run_agent()`),
+    every message is independent - see `agent/app/services/chat_service.py::run_agent()`),
     not just the derived trip-state summary.
     — `run_agent()` gained an optional `trip_id` param (still a single
     stateless turn without it, unchanged). With it: fetches the trip
     (`TripNotFoundError` propagates - caller decides, e.g. `POST /chat`
     now 404s on an unknown `trip_id`), injects a compact one-line-ish
-    summary via new `app/trips.py::trip_summary()` as a system message
+    summary via new `app/services/trip_context.py::trip_summary()` as a system message
     (not the full row/itinerary - matches CLAUDE.md's "compact summary,
     not full conversation"), then loads and replays this trip's prior
-    turns from a new `chat_messages` table (`app/chat_history.py`) before
+    turns from a new `chat_messages` table (`app/repositories/chat_history_repo.py`) before
     the new user message. After the reply, persists this turn's
     user+assistant messages - deliberately just the final text of each
     turn, not the intra-turn tool-call round trips, which are re-derived
@@ -153,9 +154,20 @@ of the retrieval/hallucination fixes.
     and the injected trip summary showed up in the reply unprompted
     (mentioned "Da Nang and Hoi An" without being told); confirmed rows
     landed correctly in `chat_messages` and cascade-deleted with the
-    trip. Unit tests in `tests/test_agent.py` (trip wiring, mocked) and
-    `tests/test_trip_summary.py`; integration tests in
-    `tests/test_chat_history.py`. 66 tests total pass.
+    trip. Unit tests in `tests/test_chat_service.py` (trip wiring, mocked) and
+    `tests/test_trip_context.py`; integration tests in
+    `tests/test_chat_history_repo.py`. 66 tests total pass.
+16a. ✅ Refactor `agent/app/` into api/services/repositories layers
+    — done before adding more tools (17-19), since `main.py`+`agent.py`
+    were already mixing HTTP handling, orchestration, and DB access,
+    and that would only get worse with weather/flights/hotels added on
+    top. See CLAUDE.md "Conventions" for the layer breakdown. Pure
+    move/rename/split, no behavior change, done as 3 commits (move
+    repositories → move services, extracting `trip_summary()` out of
+    the repository into a new `services/trip_context.py` → split
+    `main.py` into `api/{chat,trips,schemas,deps}.py`), each verified
+    with the full test suite and a live smoke test against the running
+    `trailmind-agent` container before moving on.
 17. Implement `get_weather(dest, dates)`
 18. Implement `search_flights(origin, dest, dates)` (Go service)
 19. Implement `search_hotels(dest, dates, budget)` (Go service)

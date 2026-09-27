@@ -5,8 +5,9 @@ loop that lets trailmind's assistant call `search_destination_knowledge`
 on its own, look at the result, and decide what to do next before
 answering the user. It assumes no prior background in agent frameworks
 or LLM tool calling, and every example is pulled from the real code in
-this repo (`agent/app/agent.py`, `agent/app/llm.py`, `agent/app/tools.py`,
-`agent/app/main.py`, and the tests) — not a hypothetical framework.
+this repo (`agent/app/services/chat_service.py`, `agent/app/llm.py`,
+`agent/app/services/knowledge_service.py`, `agent/app/main.py`, and the
+tests) — not a hypothetical framework.
 
 If you haven't read `docs/chunking_embedding.md` yet, that one covers
 what happens *inside* `search_destination_knowledge` (chunking,
@@ -476,7 +477,8 @@ This is the seam the file's own docstring calls out explicitly:
 > OllamaLLMClient is the only implementation for now (local, no API
 > key/cost). An AnthropicLLMClient implementing the same LLMClient
 > protocol can be added later (Messages API tool use) without
-> changing app/agent.py — that's the seam this interface exists for.
+> changing app/services/chat_service.py — that's the seam this
+> interface exists for.
 
 Concretely: `run_agent()` only ever calls `llm.chat(messages,
 tools=[TOOL_SCHEMA])` and reads `turn.content` / `turn.tool_calls`. It

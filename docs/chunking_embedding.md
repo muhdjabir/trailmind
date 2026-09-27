@@ -303,7 +303,7 @@ filter with the approximate similarity search in one SQL query.
 
 ### `retrieve()`: tying it together
 
-`agent/app/retrieval.py` is the function that CLAUDE.md's
+`agent/app/services/retrieval_service.py` is the function that CLAUDE.md's
 `search_destination_knowledge` tool will eventually wrap:
 
 ```python
@@ -365,7 +365,7 @@ python scripts/load_chunks_to_pg.py --destination da_nang_hoi_an
 ```
 
 After that, `retrieve("your question", destination="da_nang_hoi_an")`
-in `agent/app/retrieval.py` will query the loaded chunks directly.
+in `agent/app/services/retrieval_service.py` will query the loaded chunks directly.
 
 ## 6. What's not built yet
 

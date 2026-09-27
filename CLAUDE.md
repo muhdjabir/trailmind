@@ -17,7 +17,7 @@ reasoning over tools, for destinations the user is actively planning
   `OLLAMA_CHAT_MODEL` env vars.
 - The chat LLM is swappable: `app.llm.LLMClient` is a Protocol: any
   provider (e.g. a future Claude API client) can implement it without
-  touching `app/agent.py`.
+  touching `app/services/chat_service.py`.
 
 ## Local dev
 - `docker compose up -d --build` runs the whole stack: Postgres
@@ -36,10 +36,11 @@ reasoning over tools, for destinations the user is actively planning
 - Each turn re-hydrates a compact summary of trip state into context,
   not the full conversation.
 - `run_agent(..., trip_id=...)` does this: injects the trip's compact
-  summary (`app/trips.py::trip_summary()`) plus its prior chat history
-  (`chat_messages` table, `app/chat_history.py`) into context, then
-  persists this turn's user/assistant messages after replying. Without
-  `trip_id` it's a single stateless turn, unchanged from before.
+  summary (`app/services/trip_context.py::trip_summary()`) plus its
+  prior chat history (`chat_messages` table,
+  `app/repositories/chat_history_repo.py`) into context, then persists
+  this turn's user/assistant messages after replying. Without `trip_id`
+  it's a single stateless turn, unchanged from before.
 
 ## Tool error handling
 - Tools return structured results or a typed error — never silent failure.
@@ -49,6 +50,15 @@ reasoning over tools, for destinations the user is actively planning
 ## Conventions
 - Python/FastAPI owns orchestration + RAG. Go owns tool microservices.
   Next.js is presentation only.
+- `agent/app/` layering: `api/` (FastAPI routers + request/response DTOs
+  + the `get_db_conn` dependency) → `services/` (business logic:
+  `chat_service.py` is the tool-calling loop, `knowledge_service.py`/
+  `retrieval_service.py` back the RAG tool, `trip_context.py` formats
+  trip state for the LLM) → `repositories/` (plain DB-access functions
+  taking an explicit `conn`, no ORM/base-repository class). `llm.py`/
+  `embeddings.py` (external Ollama clients), `destinations.py` (domain
+  constant), and `chunking.py` (build-time corpus tool, not part of the
+  runtime request path) sit outside this stack at the top level.
 - Python tests: pytest.
 - Commit messages: prefix with feat:/chore:/fix:, keep them short — no
   verbose bodies unless a decision genuinely needs explaining.
@@ -56,7 +66,7 @@ reasoning over tools, for destinations the user is actively planning
   narrating its own retrieval — never phrases like "the knowledge
   base states", "based on the search results", "according to the
   tool". Keep this in mind when editing `SYSTEM_PROMPT` in
-  `app/agent.py`.
+  `app/services/chat_service.py`.
 
 ## Known constraints
 - Destination knowledge base currently covers 4 destinations only.
