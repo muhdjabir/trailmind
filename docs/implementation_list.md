@@ -500,9 +500,22 @@ of the retrieval/hallucination fixes.
     with **FastAPI as the enforcement point**. Only auth goes through a
     (free) Supabase project; trip data stays in the local Postgres until
     the `DATABASE_URL` swap.
-    - Frontend: sign in with `supabase-js` (magic link and/or Google);
-      send the session JWT as `Authorization: Bearer` on every API call.
-      Sign-in/out UI in the header (the mockup's avatar slot).
+    - Screens: follow the mockups - `docs/auth_signin.png` (desktop
+      sign-in), `docs/auth_register.png` (desktop create account),
+      `docs/auth_mobile.png` (mobile sign-in).
+    - Sign-in methods: **email + password** and **Google** via
+      `supabase-js`. Apple is left out on purpose (needs a paid Apple
+      Developer account) - drop the mockups' Apple buttons. Email flows
+      the mockups imply: "Forgot?" → Supabase password-reset email, and
+      a password-strength meter on register (enforce the same minimum
+      length server-side in Supabase's auth settings, not just the UI).
+    - Register collects a **name** - store it in Supabase user metadata
+      (`options.data.name` on sign-up; Google provides one) and show it
+      in the header avatar; no separate profile table until something
+      else needs one.
+    - Frontend: send the session JWT as `Authorization: Bearer` on every
+      API call; unauthenticated visitors land on sign-in. Sign-out from
+      the header avatar (the main mockup's "MR" slot).
     - Backend: a `get_current_user` dependency that verifies the JWT
       against Supabase's JWKS (signature, expiry, audience) and yields
       the user id (`sub`). Required on every route; 401 without a valid
