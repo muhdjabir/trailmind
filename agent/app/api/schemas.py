@@ -75,6 +75,7 @@ class TripStatsResponse(BaseModel):
     budget_total: float | None
     weather: WeatherStatsResponse | None
     weather_error: str | None
+    suggestions: list[str]
 
     @classmethod
     def from_stats(cls, stats: TripStats) -> "TripStatsResponse":
@@ -95,6 +96,7 @@ class TripStatsResponse(BaseModel):
             budget_total=stats.budget_total,
             weather=weather,
             weather_error=stats.weather_error,
+            suggestions=stats.suggestions,
         )
 
 

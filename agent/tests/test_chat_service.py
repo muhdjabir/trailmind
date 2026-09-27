@@ -455,17 +455,17 @@ def test_update_trip_dates_tool_parses_dates_and_reports_length(
 ) -> None:
     mock_get_trip.return_value = _fake_trip()
     mock_change.return_value = (
-        _fake_trip(start_date=datetime.date(2026, 11, 6), end_date=datetime.date(2026, 11, 11)),
+        _fake_trip(start_date=datetime.date(2099, 11, 6), end_date=datetime.date(2099, 11, 11)),
         [],
     )
     conn = Mock()
     llm = _trip_turn("update_trip_dates",
-                     {"start_date": "2026-11-06", "end_date": "2026-11-11"}, "Extended.")
+                     {"start_date": "2099-11-06", "end_date": "2099-11-11"}, "Extended.")
 
     run_agent("add 2 days", llm=llm, conn=conn, trip_id=5)
 
     mock_change.assert_called_once_with(
-        conn, 5, datetime.date(2026, 11, 6), datetime.date(2026, 11, 11),
+        conn, 5, datetime.date(2099, 11, 6), datetime.date(2099, 11, 11),
         drop_days_past_end=False,
     )
     assert '"days": 6' in llm.calls[1][-1]["content"]
@@ -481,12 +481,12 @@ def test_update_trip_dates_drop_flag_passed_and_dropped_days_reported(
 ) -> None:
     mock_get_trip.return_value = _fake_trip()
     mock_change.return_value = (
-        _fake_trip(start_date=datetime.date(2026, 11, 6), end_date=datetime.date(2026, 11, 8)),
+        _fake_trip(start_date=datetime.date(2099, 11, 6), end_date=datetime.date(2099, 11, 8)),
         [4, 5],
     )
     llm = _trip_turn(
         "update_trip_dates",
-        {"start_date": "2026-11-06", "end_date": "2026-11-08", "drop_days_past_end": True},
+        {"start_date": "2099-11-06", "end_date": "2099-11-08", "drop_days_past_end": True},
         "Trimmed to 3 days.",
     )
 
@@ -510,7 +510,7 @@ def test_drop_flag_ignored_when_user_did_not_ask_to_drop(
     mock_change.side_effect = InvalidTripDatesError("day(s) 4, 5 still have saved plans")
     llm = _trip_turn(
         "update_trip_dates",
-        {"start_date": "2026-11-06", "end_date": "2026-11-08", "drop_days_past_end": True},
+        {"start_date": "2099-11-06", "end_date": "2099-11-08", "drop_days_past_end": True},
         "Want me to drop days 4 and 5?",
     )
 
@@ -554,7 +554,7 @@ def test_drop_flag_requires_real_boolean(
     mock_change.return_value = (_fake_trip(), [])
     llm = _trip_turn(
         "update_trip_dates",
-        {"start_date": "2026-11-06", "end_date": "2026-11-08", "drop_days_past_end": "false"},
+        {"start_date": "2099-11-06", "end_date": "2099-11-08", "drop_days_past_end": "false"},
         "ok",
     )
 
@@ -573,7 +573,7 @@ def test_update_trip_dates_bad_date_fed_back_without_calling_service(
 ) -> None:
     mock_get_trip.return_value = _fake_trip()
     llm = _trip_turn("update_trip_dates",
-                     {"start_date": "next friday", "end_date": "2026-11-11"}, "Which dates?")
+                     {"start_date": "next friday", "end_date": "2099-11-11"}, "Which dates?")
 
     run_agent("move it", llm=llm, conn=Mock(), trip_id=5)
 
@@ -594,7 +594,7 @@ def test_shortening_refusal_fed_back_not_raised(
     mock_get_trip.return_value = _fake_trip()
     mock_change.side_effect = InvalidTripDatesError("day(s) 4 still have saved plans")
     llm = _trip_turn("update_trip_dates",
-                     {"start_date": "2026-11-06", "end_date": "2026-11-08"}, "Day 4 has plans.")
+                     {"start_date": "2099-11-06", "end_date": "2099-11-08"}, "Day 4 has plans.")
 
     assert run_agent("shorten it", llm=llm, conn=Mock(), trip_id=5) == "Day 4 has plans."
     assert "still have saved plans" in llm.calls[1][-1]["content"]
@@ -662,6 +662,146 @@ def test_invalid_trip_details_fed_back_not_raised(
 
     assert run_agent("it's us", llm=llm, conn=Mock(), trip_id=5) == "How many of you?"
     assert "positive integer" in llm.calls[1][-1]["content"]
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.change_trip_dates")
+def test_past_trip_dates_rolled_forward_to_next_occurrence(
+    mock_change: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    mock_change.side_effect = lambda conn, trip_id, start, end, drop_days_past_end: (
+        _fake_trip(start_date=start, end_date=end), []
+    )
+    llm = _trip_turn("update_trip_dates",
+                     {"start_date": "2023-11-06", "end_date": "2023-11-09"}, "Set.")
+
+    with patch("app.services.chat_service.datetime") as mock_dt:
+        mock_dt.date.today.return_value = datetime.date(2026, 9, 27)
+        mock_dt.date.fromisoformat = datetime.date.fromisoformat
+        run_agent("6 to 9 November", llm=llm, conn=Mock(), trip_id=5)
+
+    args = mock_change.call_args.args
+    assert (args[2], args[3]) == (datetime.date(2026, 11, 6), datetime.date(2026, 11, 9))
+    assert "is in the past" in llm.calls[-1][-1]["content"]
+
+
+def test_roll_forward_keeps_current_and_future_ranges() -> None:
+    from app.services.chat_service import _roll_forward
+
+    today = datetime.date(2026, 9, 27)
+    ongoing = (datetime.date(2026, 9, 25), datetime.date(2026, 9, 30))
+    assert _roll_forward(*ongoing, today) == ongoing
+    assert _roll_forward(datetime.date(2024, 9, 1), datetime.date(2024, 9, 3), today) == (
+        datetime.date(2027, 9, 1), datetime.date(2027, 9, 3)
+    )
+    assert _roll_forward(datetime.date(2024, 2, 29), datetime.date(2024, 3, 2), today)[0] == (
+        datetime.date(2027, 2, 28)
+    )
+
+
+def _dated_trip():
+    return _fake_trip(start_date=datetime.date(2099, 11, 6), end_date=datetime.date(2099, 11, 9))
+
+
+def _save_call(day: int) -> ToolCall:
+    return ToolCall(id=f"s{day}", name="save_itinerary_day",
+                    arguments={"day": day, "title": f"Day {day}", "items": []})
+
+
+@patch("app.services.chat_service.save_itinerary_day")
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+def test_plan_described_but_not_saved_gets_one_nudge(
+    mock_get_trip: Mock, mock_list_messages: Mock, mock_append: Mock, mock_list_days: Mock,
+    mock_save: Mock,
+) -> None:
+    from app.repositories.itinerary_repo import ItineraryDay
+
+    mock_get_trip.return_value = _dated_trip()
+    mock_save.side_effect = lambda conn, trip_id, day, title, items: ItineraryDay(
+        id=day, trip_id=trip_id, day_number=day, plan={"title": title, "items": items},
+        updated_at=datetime.datetime(2026, 1, 1),
+    )
+    plan_text = "**Day 1: Arrive**\nOld Town.\n\n**Day 2: Beach**\nAn Bang."
+    llm = FakeLLMClient(
+        [
+            LLMTurn(content=plan_text),
+            LLMTurn(content=None, tool_calls=[_save_call(1), _save_call(2)]),
+            LLMTurn(content="Both days are on your itinerary."),
+        ]
+    )
+
+    result = run_agent("plan it", llm=llm, conn=Mock(), trip_id=1)
+
+    assert mock_save.call_count == 2
+    # FakeLLMClient keeps a reference to the one shared messages list.
+    assert any(
+        m["role"] == "system" and "day(s) 1, 2" in m["content"] for m in llm.calls[-1]
+    )
+    assert result == plan_text + "\n\nBoth days are on your itinerary."
+
+
+@patch("app.services.chat_service.list_days")
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+def test_no_nudge_when_mentioned_days_already_saved(
+    mock_get_trip: Mock, mock_list_messages: Mock, mock_append: Mock, mock_list_days: Mock,
+) -> None:
+    from app.repositories.itinerary_repo import ItineraryDay
+
+    mock_get_trip.return_value = _dated_trip()
+    mock_list_days.return_value = [
+        ItineraryDay(id=n, trip_id=1, day_number=n, plan={"title": "x", "items": []},
+                     updated_at=datetime.datetime(2026, 1, 1))
+        for n in (1, 2)
+    ]
+    llm = FakeLLMClient([LLMTurn(content="Day 1 is Old Town, day 2 is the beach.")])
+
+    assert run_agent("recap?", llm=llm, conn=Mock(), trip_id=1) == (
+        "Day 1 is Old Town, day 2 is the beach."
+    )
+    assert len(llm.calls) == 1
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+def test_nudge_only_once_and_repeat_reply_not_duplicated(
+    mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _dated_trip()
+    question = "Should day 2 or day 3 be the beach day?"
+    llm = FakeLLMClient([LLMTurn(content=question), LLMTurn(content=question)])
+
+    assert run_agent("thanks", llm=llm, conn=Mock(), trip_id=1) == question
+    assert len(llm.calls) == 2
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+def test_single_day_mention_not_nudged(mock_get_trip: Mock, *_: Mock) -> None:
+    mock_get_trip.return_value = _dated_trip()
+    llm = FakeLLMClient([LLMTurn(content="Want me to plan day 2 next?")])
+
+    run_agent("thanks", llm=llm, conn=Mock(), trip_id=1)
+
+    assert len(llm.calls) == 1
+
+
+def test_no_nudge_without_trip() -> None:
+    llm = FakeLLMClient([LLMTurn(content="Day 1: arrive. Day 2: beach.")])
+    run_agent("sample plan?", llm=llm)
+    assert len(llm.calls) == 1
 
 
 def test_trip_tools_not_offered_without_trip() -> None:

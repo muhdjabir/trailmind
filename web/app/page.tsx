@@ -15,9 +15,13 @@ type Message = {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// Canned prompts from the mockup - real and functional (they just send
-// the shown text), unlike the static trip/itinerary chrome around them.
-const SUGGESTIONS = ["Add a fado night", "Rain plan for day 4", "Where to eat in Porto?"];
+// Shown only with no trip selected (stateless chat). With a trip, chips
+// come from its state via /trips/{id}/stats (step 22b).
+const NO_TRIP_SUGGESTIONS = [
+  "Where to eat in Hoi An?",
+  "Best time to visit Bangkok?",
+  "What's Almaty like in winter?",
+];
 
 function SendIcon() {
   return (
@@ -184,6 +188,10 @@ export default function Home() {
   }
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId) ?? null;
+  // No chips while a trip's stats are loading, rather than flashing
+  // generic ones that don't fit the trip.
+  const suggestions =
+    selectedTripId === null ? NO_TRIP_SUGGESTIONS : (stats?.suggestions ?? []);
 
   return (
     <div className="flex h-screen bg-[#f1efec] text-[#171717]">
@@ -257,7 +265,7 @@ export default function Home() {
         <div className="border-t border-[#e2e0da] px-8 py-4">
           <div className="mx-auto max-w-2xl">
             <div className="mb-3 flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"

@@ -45,6 +45,11 @@ reasoning over tools, for destinations the user is actively planning
   drop/remove/delete/cut them (`_DROP_INTENT` in chat_service.py) -
   enforced in code because gemma4 set it for a plain "can we make it 3
   days?". A missed match is safe: the tool refuses and the model asks.
+  A past date range is rolled forward to its next occurrence (gemma4
+  picked 2023 for "6-9 November") and the tool result says so.
+- If a trip reply lays out 2+ days that have nothing saved and no trip
+  tool ran that turn, `run_agent` nudges the model once to save them -
+  it otherwise often researched, then wrote the plan as text only.
 - update_trip_details(destinations?, party_size?, budget_planned?,
   budget_total?) -> partial update; omitted fields are left alone,
   `destinations` replaces the list. Known guide destinations are

@@ -12,6 +12,19 @@ KNOWN_DESTINATIONS = frozenset(
 )
 
 
+DISPLAY_NAMES: dict[str, str] = {
+    "da_nang_hoi_an": "Da Nang & Hoi An",
+    "bangkok": "Bangkok",
+    "almaty": "Almaty",
+    "tokyo_fuji_hiroshima": "Tokyo, Fuji & Hiroshima",
+}
+
+
+def display_name(destination: str) -> str:
+    """Human-readable name; free-text (non-guide) destinations are already one."""
+    return DISPLAY_NAMES.get(destination, destination)
+
+
 class UnknownDestinationError(Exception):
     """Raised when asked about a destination outside KNOWN_DESTINATIONS.
 

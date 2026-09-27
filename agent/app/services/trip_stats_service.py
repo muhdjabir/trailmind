@@ -16,6 +16,7 @@ from app.open_meteo import OpenMeteoError
 from app.repositories.itinerary_repo import list_days
 from app.repositories.trips_repo import get_trip
 from app.services.itinerary_service import trip_length
+from app.services.suggestions_service import build_suggestions
 from app.services.weather_service import WeatherResult, get_weather
 
 
@@ -33,6 +34,10 @@ class TripStats:
     # Set when weather was attempted but failed - kept separate from
     # "not attempted" (no dates/destination) so the UI can tell them apart.
     weather_error: str | None
+    # Follow-up chips (step 22b) - built here since the rain rule needs
+    # the weather this already fetched; a separate endpoint would re-run
+    # the slow Open-Meteo calls.
+    suggestions: list[str]
 
 
 def compute_trip_stats(conn: psycopg.Connection, trip_id: int) -> TripStats:
@@ -63,4 +68,5 @@ def compute_trip_stats(conn: psycopg.Connection, trip_id: int) -> TripStats:
         weather_destination=weather_destination,
         weather=weather,
         weather_error=weather_error,
+        suggestions=build_suggestions(trip, length, len(planned), open_days, weather),
     )

@@ -146,6 +146,11 @@ def test_stats_for_dated_trip_with_days(_cleanup) -> None:
         "total_precipitation_mm": 60.0,
     }
     assert body["weather_error"] is None
+    assert body["suggestions"] == [
+        "Plan day 2",
+        "What can we do if it rains?",
+        "Where to eat in Da Nang & Hoi An?",
+    ]
 
 
 def test_stats_returns_404_for_unknown_trip() -> None:

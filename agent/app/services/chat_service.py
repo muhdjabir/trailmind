@@ -431,6 +431,14 @@ def _update_trip_dates(
     except ValueError as e:
         raise InvalidTripDatesError(f"invalid date - expected YYYY-MM-DD: {e}") from e
 
+    # Seen live: "6 to 9 November" sent as 2023 despite today's date being
+    # in context; refusing it made the model retry with the wrong year
+    # (2027) and then claim a save that never happened. A trip being
+    # planned can't be in the past, so roll it forward to the next
+    # occurrence instead and report that back.
+    requested = (start_date, end_date)
+    start_date, end_date = _roll_forward(start_date, end_date, datetime.date.today())
+
     wants_drop = arguments.get("drop_days_past_end") is True
     # Enforced here, not left to the prompt: live, gemma4 set the flag for a
     # plain "can we make the trip 3 days?" and deleted saved days. Missing a
@@ -448,13 +456,35 @@ def _update_trip_dates(
                 "don't retry"
             ) from e
         raise
-    return {
+    result = {
         "updated": True,
         "start_date": str(trip.start_date),
         "end_date": str(trip.end_date),
         "days": trip_length(trip),
         "dropped_days": dropped,
     }
+    if (start_date, end_date) != requested:
+        result["note"] = (
+            f"{requested[0]} to {requested[1]} is in the past, so the next "
+            "upcoming occurrence was saved instead - give the user these dates."
+        )
+    return result
+
+
+def _roll_forward(
+    start: datetime.date, end: datetime.date, today: datetime.date
+) -> tuple[datetime.date, datetime.date]:
+    """Shift a past date range forward by whole years until it hasn't ended."""
+    while end < today:
+        start, end = _add_year(start), _add_year(end)
+    return start, end
+
+
+def _add_year(d: datetime.date) -> datetime.date:
+    try:
+        return d.replace(year=d.year + 1)
+    except ValueError:  # Feb 29 → Feb 28 in a non-leap year
+        return d.replace(year=d.year + 1, day=28)
 
 
 def _update_trip_details(
@@ -523,6 +553,35 @@ def _run_tool(
     return {"error": f"unknown tool '{name}'"}
 
 
+_DAY_MENTION = re.compile(r"\bday\s+(\d{1,2})\b", re.IGNORECASE)
+
+
+def _unsaved_days_described(text: str, saved_days: set[int], trip_days: int | None) -> list[int]:
+    """Day numbers a reply lays out a plan for that have nothing saved yet.
+
+    Needs 2+ such days: a single mention ("want me to plan day 2?") is
+    usually a question, and nudging on it risks an unrequested save.
+    """
+    mentioned = {int(n) for n in _DAY_MENTION.findall(text)}
+    unsaved = sorted(
+        n for n in mentioned
+        if n >= 1 and (trip_days is None or n <= trip_days) and n not in saved_days
+    )
+    return unsaved if len(unsaved) >= 2 else []
+
+
+def _save_nudge(days: list[int]) -> str:
+    listed = ", ".join(str(d) for d in days)
+    return (
+        f"Your reply talks about day(s) {listed}, which have nothing saved on "
+        "the itinerary, and you haven't called save_itinerary_day this turn. "
+        "If your reply proposes a plan for those days, save each one now with "
+        "save_itinerary_day. If it only mentions them without proposing a "
+        "plan (e.g. asking a question), call no tools and repeat your reply "
+        "unchanged."
+    )
+
+
 def run_agent(
     user_message: str,
     llm: LLMClient | None = None,
@@ -540,6 +599,8 @@ def run_agent(
     Without `trip_id`, behaves exactly as before: a single stateless turn.
     """
     llm = llm or OllamaLLMClient()
+    saved_days: set[int] = set()
+    trip_days: int | None = None
     # The model has no other way to know the real date - without this it
     # guesses from training data and hallucinates stale/past dates for
     # get_weather (observed: asked "the next couple days", passed dates
@@ -558,11 +619,11 @@ def run_agent(
         # After the history, not before: replayed replies like "I've updated
         # day 3" carry no tool calls, and with the itinerary rules buried
         # above them the local model imitated those and skipped saving.
+        days = list_days(conn, trip_id)
+        saved_days = {d.day_number for d in days}
+        trip_days = trip_length(trip)
         messages.append(
-            {
-                "role": "system",
-                "content": f"Current trip state: {trip_summary(trip, list_days(conn, trip_id))}",
-            }
+            {"role": "system", "content": f"Current trip state: {trip_summary(trip, days)}"}
         )
         messages.append({"role": "system", "content": ITINERARY_PROMPT})
         tools = TRIP_TOOL_SCHEMAS
@@ -574,6 +635,8 @@ def run_agent(
     # the answer (e.g. introducing a plan while saving its days), with the
     # final turn just a short follow-up - so it's kept, not discarded.
     interim_text: list[str] = []
+    trip_tool_used = False
+    nudged = False
     for _ in range(max_tool_rounds):
         turn = llm.chat(messages, tools=tools)
 
@@ -582,6 +645,20 @@ def run_agent(
             if not final and not interim_text:
                 # gemma4 occasionally returns a completely empty turn; asking
                 # again (the model samples) beats showing the user a blank reply.
+                continue
+            unsaved = (
+                _unsaved_days_described(final, saved_days, trip_days)
+                if trip_id is not None and not trip_tool_used and not nudged
+                else []
+            )
+            if unsaved:
+                # Live, gemma4 often looked things up first and then wrote the
+                # whole plan as text without saving it (0 of 4 days, 3 of 3
+                # runs). One nudge, keeping the text it already wrote.
+                nudged = True
+                interim_text.append(final)
+                messages.append({"role": "assistant", "content": final})
+                messages.append({"role": "system", "content": _save_nudge(unsaved)})
                 continue
             so_far = "\n\n".join(interim_text)
             # The model sometimes repeats its closing line in both turns.
@@ -605,10 +682,18 @@ def run_agent(
         )
         for tc in turn.tool_calls:
             result = _run_tool(tc.name, tc.arguments, conn, trip_id, user_message)
+            # Any trip tool - not just a successful save - means the model
+            # acted on the itinerary this turn (e.g. deleted day 2, or had a
+            # date change refused); its reply mentioning days isn't a
+            # forgotten save then, and nudging could re-save a deleted day.
+            if tc.name in TRIP_TOOL_NAMES:
+                trip_tool_used = True
             messages.append(
                 {"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)}
             )
 
+    if reply is None and interim_text:
+        reply = "\n\n".join(interim_text)
     if reply is None:
         # Exceeded max_tool_rounds without a final answer - infra-level
         # guard against an LLM stuck calling tools, not a policy decision

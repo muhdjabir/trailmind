@@ -38,6 +38,7 @@ export type TripStats = {
     total_precipitation_mm: number;
   } | null;
   weather_error: string | null;
+  suggestions: string[];
 };
 
 export type ChatMessage = {

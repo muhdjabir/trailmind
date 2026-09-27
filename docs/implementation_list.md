@@ -435,8 +435,44 @@ of the retrieval/hallucination fixes.
     Verified in a real browser against real Open-Meteo data: cards
     showed 2/4 planned, "28° / 24°, typical for these dates", and budget
     1,860 of 2,400; asking the agent to plan day 2 updated Planned to 3/4.
-22b. Generate contextual follow-up suggestions from current trip/itinerary
+22b. ✅ Generate contextual follow-up suggestions from current trip/itinerary
     state, replacing the mockup's static suggestion chips.
+    — Rule-based, not LLM-generated (user-confirmed): instant, testable,
+    and every chip is something the agent can act on.
+    `services/suggestions_service.py::build_suggestions()` picks up to 3,
+    most useful first: pick a destination → best time to visit (no
+    dates) → plan the whole trip / plan day N (first open day) → rain
+    plan (≥5 mm/day average over the trip's weather) → where to eat in
+    <destination> → how much to budget (no budget) → what are we missing
+    (all days planned). Returned as `suggestions` on `/trips/{id}/stats`
+    rather than a separate endpoint, because the rain rule needs the
+    weather that call already fetches. `destinations.py` gained
+    `DISPLAY_NAMES`/`display_name()` so chips say "Da Nang & Hoi An", not
+    the slug. With no trip selected, three generic chips remain.
+    Verified in a real browser: a blank trip showed "Help us pick a
+    destination"; after "two of us, Hoi An and Da Nang, 6-9 November"
+    the chips became "Plan the whole trip day by day", "What can we do
+    if it rains?" (Nov there averages >10 mm/day), "Where to eat in Da
+    Nang & Hoi An?"; clicking a chip sends it.
+    **Agent bugs the chips surfaced, fixed:**
+    1. Planning in a *second* turn (details first, then "plan the whole
+       trip") saved 0 of 4 days in 3 of 3 runs: the model looked things
+       up, then wrote the plan as text and never saved it. `run_agent`
+       now nudges once when a trip reply lays out 2+ days with nothing
+       saved and no trip tool was used this turn (saving, or repeating
+       the reply if it was only a question). After: 4 of 4 days in 6 of
+       6 runs. Kept narrow on purpose - a single "want me to plan day
+       2?" or a reply after a delete doesn't trigger it, so it can't
+       cause unrequested saves or re-save a deleted day.
+    2. "6 to 9 November" was saved as **2023** despite today's date in
+       context; refusing past dates made the model retry with 2027 and
+       then claim a save that didn't happen. `update_trip_dates` now
+       rolls a past range forward to its next occurrence and tells the
+       model which dates were saved.
+    Still open: the model sometimes repeats dates back without calling
+    `update_trip_dates` (about 1 in 4 multi-detail first messages) - the
+    same "says it, doesn't save it" pattern as before.
+    198 tests total pass.
 22c. Calendar export (ICS) generated from stored itinerary.
 23. Expand destination corpus + eval set to remaining destinations (Bangkok, Almaty, Tokyo/Fuji/Hiroshima)
 
