@@ -494,6 +494,43 @@ of the retrieval/hallucination fixes.
     to `api/trips.py` and served a half-updated module (NameError) until
     restarted - a hot-reload quirk, not a code bug.
 23. Expand destination corpus + eval set to remaining destinations (Bangkok, Almaty, Tokyo/Fuji/Hiroshima)
+23a. Auth: lock trips to the user who owns them
+    — Approach: **Supabase Auth** for sign-in (the state model already
+    targets Supabase, and it avoids owning password storage/resets),
+    with **FastAPI as the enforcement point**. Only auth goes through a
+    (free) Supabase project; trip data stays in the local Postgres until
+    the `DATABASE_URL` swap.
+    - Frontend: sign in with `supabase-js` (magic link and/or Google);
+      send the session JWT as `Authorization: Bearer` on every API call.
+      Sign-in/out UI in the header (the mockup's avatar slot).
+    - Backend: a `get_current_user` dependency that verifies the JWT
+      against Supabase's JWKS (signature, expiry, audience) and yields
+      the user id (`sub`). Required on every route; 401 without a valid
+      token.
+    - Ownership: `trips.user_id` (already exists, nullable, unused) is
+      set from the token on create. `list_trips` filters by it; every
+      `/trips/{id}/...` route and `/chat` with a `trip_id` look the trip
+      up by `id AND user_id`, returning **404, not 403**, for someone
+      else's trip so ids don't leak. Itinerary days, chat history and
+      stats all hang off the trip, so the one check covers them.
+    - Agent: tools already never take `trip_id` from the model
+      (`run_agent` supplies it), so verifying ownership before
+      `run_agent` covers all trip tools - keep it that way.
+    - Migration: assign or delete the existing ownerless trips, then make
+      `user_id` NOT NULL.
+    - Gotcha: the "Export to calendar" button is a plain link and can't
+      send a Bearer token - switch it to fetch-then-save, or a
+      short-lived signed download URL.
+    - Not relied on: Supabase row-level security. FastAPI connects with
+      full DB access, so RLS wouldn't apply; the app-level checks are the
+      real enforcement (RLS can be added later if clients ever query
+      Supabase directly).
+    - Tests: a JWT fixture signed with a test key; cross-user access to
+      every trip route returns 404; unauthenticated requests return 401.
+    - Considered and not chosen: self-rolled auth in FastAPI (users
+      table, argon2, httpOnly session cookie). No external service, and
+      a cookie would make the ICS link just work - but we'd own all the
+      security details and likely redo it on the Supabase move.
 
 **Checkpoint:** agent correctly routes across all tools; state persists.
 (15a, 19a, 20a, 22a-c added after reviewing the step 11a UI mockup —
