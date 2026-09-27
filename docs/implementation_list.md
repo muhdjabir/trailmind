@@ -87,11 +87,13 @@
          not a Da Nang one. Full test suite (46 tests, including integration) passes
          against the live containers.
 
-**Checkpoint:** ✅ v0 core loop done and scored. Both real findings above
-are unresolved — worth fixing before or alongside step 8 (reranking),
-since reranking wouldn't fix either one (one's a prompting/tool-result
-issue, the other's a metadata granularity issue). Step 11a (UI mockup)
-is a separate, presentation-only track that can happen independently
+**Checkpoint:** ✅ v0 core loop done and scored, and both real findings
+above are now fixed and verified (empty-tool-result signal + city
+metadata filter, confirmed live via `run_eval.py` on q19/q04). Step 8
+(reranking) is still open, but neither finding was blocking it — one
+was a prompting/tool-result issue, the other a metadata granularity
+issue, and reranking wouldn't have fixed either. Step 11a (UI mockup)
+was a separate, presentation-only track that happened independently
 of the retrieval/hallucination fixes.
 
 ## v1: Add tools + persistence
