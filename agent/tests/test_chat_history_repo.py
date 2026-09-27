@@ -1,8 +1,8 @@
 import pytest
 
-from app.chat_history import append_message, list_messages
-from app.trips import create_trip
-from app.vector_store import VectorStoreError, get_connection
+from app.repositories.chat_history_repo import append_message, list_messages
+from app.repositories.trips_repo import create_trip
+from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
 pytestmark = pytest.mark.integration
 

@@ -14,13 +14,13 @@ import json
 
 import psycopg
 
-from app.chat_history import append_message, list_messages
+from app.repositories.chat_history_repo import append_message, list_messages
 from app.destinations import KNOWN_DESTINATIONS
 from app.embeddings import EmbeddingError
 from app.llm import LLMClient, OllamaLLMClient
 from app.tools import UnknownDestinationError, search_destination_knowledge
-from app.trips import get_trip, trip_summary
-from app.vector_store import VectorStoreError
+from app.repositories.trips_repo import get_trip, trip_summary
+from app.repositories.vector_store_repo import VectorStoreError
 
 MAX_TOOL_ROUNDS = 3
 

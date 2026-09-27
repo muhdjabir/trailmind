@@ -36,7 +36,7 @@ import yaml
 
 from app.agent import run_agent
 from app.tools import UnknownDestinationError, search_destination_knowledge
-from app.vector_store import get_connection
+from app.repositories.vector_store_repo import get_connection
 
 QUESTIONS_PATH = Path(__file__).resolve().parent.parent / "eval" / "questions.yaml"
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "eval" / "results"

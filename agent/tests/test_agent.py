@@ -2,11 +2,11 @@ import datetime
 from unittest.mock import Mock, patch
 
 from app.agent import run_agent
-from app.chat_history import ChatMessage
+from app.repositories.chat_history_repo import ChatMessage
 from app.embeddings import EmbeddingError
 from app.llm import LLMTurn, ToolCall
 from app.tools import Snippet, UnknownDestinationError
-from app.trips import Trip, TripNotFoundError
+from app.repositories.trips_repo import Trip, TripNotFoundError
 
 
 class FakeLLMClient:

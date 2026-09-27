@@ -1,6 +1,6 @@
 import pytest
 
-from app.vector_store import VectorStoreError, get_connection, search, upsert_chunks
+from app.repositories.vector_store_repo import VectorStoreError, get_connection, search, upsert_chunks
 
 pytestmark = pytest.mark.integration
 

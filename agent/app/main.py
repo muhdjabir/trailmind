@@ -6,8 +6,8 @@ from pydantic import BaseModel
 
 from app.agent import run_agent
 from app.llm import LLMError
-from app.trips import Trip, TripNotFoundError, create_trip, get_trip, list_trips
-from app.vector_store import VectorStoreError, get_connection
+from app.repositories.trips_repo import Trip, TripNotFoundError, create_trip, get_trip, list_trips
+from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
 app = FastAPI(title="trailmind-agent")
 

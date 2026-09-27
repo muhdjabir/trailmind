@@ -1,6 +1,6 @@
 import datetime
 
-from app.trips import Trip, trip_summary
+from app.repositories.trips_repo import Trip, trip_summary
 
 
 def _trip(**overrides) -> Trip:

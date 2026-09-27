@@ -2,8 +2,8 @@ import datetime
 
 import pytest
 
-from app.trips import TripNotFoundError, create_trip, get_trip, list_trips
-from app.vector_store import VectorStoreError, get_connection
+from app.repositories.trips_repo import TripNotFoundError, create_trip, get_trip, list_trips
+from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
 pytestmark = pytest.mark.integration
 

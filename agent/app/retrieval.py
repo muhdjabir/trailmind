@@ -10,7 +10,7 @@ from __future__ import annotations
 import psycopg
 
 from app.embeddings import embed_texts
-from app.vector_store import get_connection, search
+from app.repositories.vector_store_repo import get_connection, search
 
 
 def retrieve(

@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.vector_store import VectorStoreError, get_connection, upsert_chunks
+from app.repositories.vector_store_repo import VectorStoreError, get_connection, upsert_chunks
 
 EMBEDDINGS_ROOT = Path(__file__).resolve().parent.parent / "corpus_embeddings"
 

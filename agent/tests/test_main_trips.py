@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.vector_store import VectorStoreError, get_connection
+from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
 pytestmark = pytest.mark.integration
 
