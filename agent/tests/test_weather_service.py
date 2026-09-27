@@ -3,7 +3,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.destinations import UnknownDestinationError
 from app.open_meteo import OpenMeteoError
 from app.services.weather_service import get_weather
 
@@ -15,9 +14,32 @@ FORECAST_DAILY = {
 }
 
 
-def test_unknown_destination_raises_without_fetching() -> None:
-    with pytest.raises(UnknownDestinationError, match="bali"):
-        get_weather("bali", datetime.date(2026, 11, 1), datetime.date(2026, 11, 2))
+@patch("app.services.weather_service.geocode")
+@patch("app.services.weather_service.fetch_forecast")
+def test_destination_outside_known_list_is_geocoded(
+    mock_fetch_forecast: Mock, mock_geocode: Mock
+) -> None:
+    # Weather isn't gated on curated-knowledge coverage the way
+    # search_destination_knowledge is - a destination outside
+    # KNOWN_DESTINATIONS falls back to geocoding the free-text name
+    # rather than raising.
+    mock_geocode.return_value = (48.8534, 2.3488)
+    mock_fetch_forecast.return_value = FORECAST_DAILY
+    today = datetime.date.today()
+
+    result = get_weather("paris", today + datetime.timedelta(days=1), today + datetime.timedelta(days=2))
+
+    mock_geocode.assert_called_once_with("paris")
+    mock_fetch_forecast.assert_called_once_with(48.8534, 2.3488, today + datetime.timedelta(days=1),
+                                                 today + datetime.timedelta(days=2))
+    assert result.source == "forecast"
+
+
+@patch("app.services.weather_service.geocode", side_effect=OpenMeteoError("no location found for 'nowhereville'"))
+def test_geocoding_failure_raises_open_meteo_error(mock_geocode: Mock) -> None:
+    today = datetime.date.today()
+    with pytest.raises(OpenMeteoError, match="nowhereville"):
+        get_weather("nowhereville", today + datetime.timedelta(days=1), today + datetime.timedelta(days=2))
 
 
 def test_end_before_start_raises_value_error() -> None:

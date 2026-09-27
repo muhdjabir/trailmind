@@ -215,12 +215,20 @@
   expected_source_files: []
   key_facts: []
   must_not_invent:
-    - any specific Bali beach name, price, or recommendation
+    - a specific Bali beach name, price, or recommendation presented as if
+      from the verified guide, with no disclosure of where it came from
   notes: >
-    Bali is not in KNOWN_DESTINATIONS at all. Correct behavior:
-    search_destination_knowledge raises UnknownDestinationError before
-    any retrieval happens, and the agent says plainly it doesn't cover
-    Bali rather than answering from general knowledge.
+    Bali is not in KNOWN_DESTINATIONS at all. At the tool level, correct
+    behavior is unchanged: search_destination_knowledge still raises
+    UnknownDestinationError before any retrieval happens (see
+    result["tool_error"] / correctly_refused_at_tool_level in
+    run_eval.py). What changed (search_web + general-knowledge fallback,
+    "considered for later" note implemented): the agent should no longer
+    flatly refuse - it should use search_web and/or its own general
+    knowledge, but the reply MUST clearly flag that this isn't from the
+    verified guide (e.g. "that's outside my verified guide, but...").
+    Confident specifics with no such flag = fail; a flagged answer with
+    real search-sourced or general-knowledge content = pass.
 
 - id: q19
   category: adversarial-empty-corpus
@@ -230,14 +238,19 @@
   key_facts: []
   must_not_invent:
     - specific Bangkok street food stall names, prices, or addresses
+      presented as if from the verified guide, with no disclosure of
+      where they came from
   notes: >
     Bangkok IS in KNOWN_DESTINATIONS but has no corpus data loaded yet
     (v0 only covers da_nang_hoi_an so far - see implementation_list.md
-    step 23). search_destination_knowledge won't error, but will return
-    zero snippets. Correct behavior: the agent admits it doesn't have
-    specific info rather than inventing plausible-sounding details from
-    its own pretraining - this is the sharper hallucination test since
-    there's no explicit error to lean on.
+    step 23). At the tool level, correct behavior is unchanged:
+    search_destination_knowledge won't error, but returns zero snippets
+    (see result["zero_snippets_returned"] in run_eval.py). What changed:
+    same as q18 - the agent should now use search_web/general knowledge
+    rather than flatly refusing, but must clearly flag it as such. The
+    original hallucination risk this question was designed to catch
+    (confident invented specifics with NO disclosure) is still the
+    failure mode to watch for - the fix is disclosure, not silence.
 
 - id: q20
   category: cross-source

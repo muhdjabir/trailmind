@@ -253,6 +253,59 @@ def test_get_weather_tool_call_with_bad_date_returns_error_without_calling_servi
     assert "invalid date" in tool_message["content"]
 
 
+@patch("app.services.chat_service.search_web")
+def test_search_web_tool_call_result_fed_back_and_final_answer_returned(
+    mock_search_web: Mock,
+) -> None:
+    from app.services.web_search_service import WebResult
+
+    mock_search_web.return_value = [
+        WebResult(rank=1, title="Paris guide", url="https://example.com", content="Mild weather.")
+    ]
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="search_web", arguments={"query": "paris weather"})
+                ],
+            ),
+            LLMTurn(content="From a quick search, Paris weather is mild."),
+        ]
+    )
+
+    result = run_agent("what's paris like", llm=llm)
+
+    assert result == "From a quick search, Paris weather is mild."
+    mock_search_web.assert_called_once_with("paris weather")
+    tool_message = llm.calls[1][-1]
+    assert "Mild weather" in tool_message["content"]
+
+
+@patch("app.services.chat_service.search_web")
+def test_search_web_tool_error_fed_back_not_raised(mock_search_web: Mock) -> None:
+    from app.services.web_search_service import TavilyError
+
+    mock_search_web.side_effect = TavilyError("no key configured")
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="search_web", arguments={"query": "paris weather"})
+                ],
+            ),
+            LLMTurn(content="Sorry, web search isn't available right now."),
+        ]
+    )
+
+    result = run_agent("what's paris like", llm=llm)
+
+    assert result == "Sorry, web search isn't available right now."
+    tool_message = llm.calls[1][-1]
+    assert "temporarily unavailable" in tool_message["content"]
+
+
 def test_gives_up_after_max_tool_rounds() -> None:
     looping_turn = LLMTurn(
         content=None,

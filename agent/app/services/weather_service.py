@@ -14,8 +14,8 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass
 
-from app.destinations import KNOWN_DESTINATIONS, UnknownDestinationError, destination_coords
-from app.open_meteo import OpenMeteoError, fetch_archive, fetch_forecast
+from app.destinations import KNOWN_DESTINATIONS, destination_coords
+from app.open_meteo import OpenMeteoError, fetch_archive, fetch_forecast, geocode
 
 FORECAST_HORIZON_DAYS = 16
 HISTORICAL_YEARS_BACK = 3
@@ -52,19 +52,25 @@ def get_weather(
 ) -> WeatherResult:
     """Weather for `destination` (optionally narrowed to `city`) over a date range.
 
-    Raises UnknownDestinationError, UnknownCityError, ValueError (bad
-    date range), or OpenMeteoError - never returns a silently-empty
-    result; the caller decides how to handle each.
+    `destination` doesn't have to be in KNOWN_DESTINATIONS - weather
+    isn't gated on curated-knowledge-base coverage the way
+    search_destination_knowledge is. A known destination uses its
+    hardcoded coordinates (app.destinations); anything else is
+    geocoded from the free-text name instead.
+
+    Raises UnknownCityError, ValueError (bad date range), or
+    OpenMeteoError (including "place not found" from geocoding) -
+    never returns a silently-empty result; the caller decides how to
+    handle each.
     """
-    if destination not in KNOWN_DESTINATIONS:
-        raise UnknownDestinationError(
-            f"'{destination}' is not covered by the knowledge base "
-            f"(known destinations: {', '.join(sorted(KNOWN_DESTINATIONS))})"
-        )
     if end_date < start_date:
         raise ValueError(f"end_date ({end_date}) is before start_date ({start_date})")
 
-    lat, lon = destination_coords(destination, city)
+    if destination in KNOWN_DESTINATIONS:
+        lat, lon = destination_coords(destination, city)
+    else:
+        place = f"{city}, {destination}" if city else destination
+        lat, lon = geocode(place)
 
     today = datetime.date.today()
     horizon = today + datetime.timedelta(days=FORECAST_HORIZON_DAYS)

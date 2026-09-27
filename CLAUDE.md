@@ -15,11 +15,23 @@ reasoning over tools, for destinations the user is actively planning
   high/low/precipitation. Open-Meteo (free, no API key). Real forecast
   within ~16 days out; a historical average over the last 3 years for
   farther-out dates (labeled as such — never presented as a live
-  forecast). Coordinates are hardcoded per destination/city in
-  `app/destinations.py`, not geocoded at request time.
-- Both tools raise `UnknownDestinationError` for an out-of-scope
-  destination (defined once in `app/destinations.py`, shared — not
-  redefined per tool).
+  forecast). Not limited to the destinations above: a known destination
+  uses hardcoded coordinates (`app/destinations.py`); anything else is
+  geocoded from the free-text name via Open-Meteo's geocoding API.
+- search_web(query) -> ranked web results. Tavily (`TAVILY_API_KEY` env
+  var, via `.env` locally — gitignored, never commit it). Fallback only:
+  reached for when search_destination_knowledge raises
+  `UnknownDestinationError` or returns `no_information_found` — kept
+  separate, never blended into the curated tool. Every reply built on
+  search_web or general knowledge (instead of the curated guide) must
+  open with an explicit flag that it isn't from the verified guide —
+  this is a strengthened, MUST-level instruction in `SYSTEM_PROMPT`
+  (chat_service.py); a softer phrasing was tried first and the local
+  model just skipped it.
+- search_destination_knowledge raises `UnknownDestinationError` for a
+  destination outside `KNOWN_DESTINATIONS` (defined once in
+  `app/destinations.py`, shared across tools — not redefined per tool).
+  get_weather does not raise this — see above.
 
 ## LLM & embeddings backend
 - Chat LLM and embeddings both run locally via Ollama by default

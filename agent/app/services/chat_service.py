@@ -25,6 +25,7 @@ from app.repositories.vector_store_repo import VectorStoreError
 from app.services.knowledge_service import search_destination_knowledge
 from app.services.trip_context import trip_summary
 from app.services.weather_service import get_weather
+from app.services.web_search_service import TavilyError, search_web
 
 MAX_TOOL_ROUNDS = 3
 
@@ -36,25 +37,31 @@ SYSTEM_PROMPT = (
     "describing a lookup you just did. Never say things like 'the knowledge "
     "base', 'the search results', 'according to the tool', or 'based on what "
     "I found' - just answer the question directly.\n\n"
-    f"You only have detailed info on: {', '.join(sorted(KNOWN_DESTINATIONS))}. "
-    "If asked about anywhere else, say plainly that you don't have details on "
-    "it rather than guessing. Don't invent specifics (prices, names, "
+    f"Your curated, verified guide covers: {', '.join(sorted(KNOWN_DESTINATIONS))}. "
+    "For any of those, use search_destination_knowledge first and answer "
+    "from what it returns - don't invent specifics (prices, names, "
     "addresses) that didn't come back from a search.\n\n"
     "Some destinations bundle more than one city (e.g. da_nang_hoi_an "
     "covers both Da Nang and Hoi An). When the question is about a "
     "specific one of those cities, pass its name as the `city` argument "
     "so the search doesn't mix in the wrong city's details.\n\n"
-    "If a search comes back with no matching information, that means the "
-    "knowledge base doesn't cover this specific thing - even for a "
-    "destination you otherwise know about. Say so honestly instead of "
-    "filling the gap with plausible-sounding details from your own general "
-    "knowledge.\n\n"
-    "You can also look up real weather for a destination and date range "
-    "with get_weather. If the dates are too far out for a real forecast "
-    "you'll get a typical/historical-average estimate instead of a live "
-    "forecast - the tool result tells you which one it is "
-    "('forecast' vs 'historical_average'); say so plainly rather than "
-    "presenting a historical average as if it were today's forecast."
+    "If a destination is outside your curated guide (not in the list above), "
+    "or search_destination_knowledge comes back with no matching information "
+    "even for a covered one, use search_web and/or your own general "
+    "knowledge instead. Whenever you do this, your reply MUST start with a "
+    "short flag making that explicit - e.g. 'That's outside my verified "
+    "guide, but from a quick search...' or 'I don't have this in my guide, "
+    "but from what I generally know...' - every single time, not just the "
+    "first time in a conversation. This applies no matter how confident the "
+    "search_web results or your own knowledge feel; only skip the flag for "
+    "destinations in your curated guide list above.\n\n"
+    "You can also look up real weather for any destination and date range "
+    "with get_weather - it isn't limited to the destinations above. If the "
+    "dates are too far out for a real forecast you'll get a typical/"
+    "historical-average estimate instead of a live forecast - the tool "
+    "result tells you which one it is ('forecast' vs 'historical_average'); "
+    "say so plainly rather than presenting a historical average as if it "
+    "were today's forecast."
 )
 
 SEARCH_KNOWLEDGE_SCHEMA = {
@@ -96,15 +103,18 @@ GET_WEATHER_SCHEMA = {
         "name": "get_weather",
         "description": (
             "Real forecast (dates within ~16 days) or typical historical-average "
-            "weather (farther-out dates) for a destination. "
-            f"Only covers: {', '.join(sorted(KNOWN_DESTINATIONS))}."
+            "weather (farther-out dates) for a destination or place - not limited "
+            "to your curated guide's destinations, any real place name works."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "destination": {
                     "type": "string",
-                    "description": "One of the known destination slugs.",
+                    "description": (
+                        "One of the known destination slugs if it's in your guide, "
+                        "otherwise any free-text place name (e.g. 'Paris')."
+                    ),
                 },
                 "start_date": {
                     "type": "string",
@@ -128,7 +138,29 @@ GET_WEATHER_SCHEMA = {
     },
 }
 
-TOOL_SCHEMAS = [SEARCH_KNOWLEDGE_SCHEMA, GET_WEATHER_SCHEMA]
+SEARCH_WEB_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "search_web",
+        "description": (
+            "Live web search. Use this only when search_destination_knowledge "
+            "says a destination isn't covered, or comes back with no matching "
+            "information for a covered one."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Free-text search query.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+TOOL_SCHEMAS = [SEARCH_KNOWLEDGE_SCHEMA, GET_WEATHER_SCHEMA, SEARCH_WEB_SCHEMA]
 
 
 def _run_search_destination_knowledge(arguments: dict, conn: psycopg.Connection | None) -> dict:
@@ -143,9 +175,10 @@ def _run_search_destination_knowledge(arguments: dict, conn: psycopg.Connection 
             return {
                 "no_information_found": True,
                 "message": (
-                    "No matching information in the knowledge base for this "
-                    "query. Do not answer from general knowledge - tell the "
-                    "user plainly that you don't have specifics on this."
+                    "No matching information in the verified guide for this "
+                    "query. Use search_web and/or your own general knowledge "
+                    "instead, but make clear to the user that this isn't from "
+                    "your verified guide."
                 ),
             }
         return {"snippets": [dataclasses.asdict(s) for s in snippets]}
@@ -171,10 +204,18 @@ def _run_get_weather(arguments: dict) -> dict:
         )
         return {**dataclasses.asdict(result), "start_date": str(result.start_date),
                 "end_date": str(result.end_date)}
-    except (UnknownDestinationError, UnknownCityError, ValueError) as e:
+    except (UnknownCityError, ValueError) as e:
         return {"error": str(e)}
     except OpenMeteoError as e:
         return {"error": f"weather service temporarily unavailable: {e}"}
+
+
+def _run_search_web(arguments: dict) -> dict:
+    try:
+        results = search_web(arguments.get("query", ""))
+        return {"results": [dataclasses.asdict(r) for r in results]}
+    except TavilyError as e:
+        return {"error": f"web search temporarily unavailable: {e}"}
 
 
 def _run_tool(name: str, arguments: dict, conn: psycopg.Connection | None) -> dict:
@@ -182,6 +223,8 @@ def _run_tool(name: str, arguments: dict, conn: psycopg.Connection | None) -> di
         return _run_search_destination_knowledge(arguments, conn)
     if name == "get_weather":
         return _run_get_weather(arguments)
+    if name == "search_web":
+        return _run_search_web(arguments)
     return {"error": f"unknown tool '{name}'"}
 
 

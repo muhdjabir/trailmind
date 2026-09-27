@@ -232,10 +232,53 @@ of the retrieval/hallucination fixes.
     near-term Bangkok question got a real forecast; a far-future Almaty
     question correctly got - and was labeled as - a historical average;
     a Hoi An-specific question resolved to Hoi An's coordinates, not Da
-    Nang's; an out-of-scope destination (Paris) correctly refused.
+    Nang's; an out-of-scope destination (Paris) correctly refused at the
+    time (superseded by step 17a below, which made `get_weather` work
+    for any place via geocoding).
     Unit tests: `tests/test_open_meteo.py`, `tests/test_weather_service.py`,
     `tests/test_destinations.py`, plus tool-routing tests in
     `tests/test_chat_service.py`. 87 tests total pass.
+17a. ✅ Web search + general-knowledge fallback for uncovered destinations
+    — implements the "Web search for uncovered destinations" idea from
+    "Considered for later" below, now that it's actually wanted: a new
+    `search_web(query)` tool (Tavily, free tier - `agent/app/tavily_client.py`
+    raw client, `agent/app/services/web_search_service.py` wraps it),
+    kept separate from `search_destination_knowledge` per that note's
+    original design constraint - curated and live-web answers stay
+    distinguishable, never silently blended. No new gating logic: the
+    existing `UnknownDestinationError`/`no_information_found` signals
+    are the model's cue to reach for `search_web` and/or its own general
+    knowledge instead - same error-feedback-loop mechanism used
+    everywhere else here. `SYSTEM_PROMPT` requires every such reply to
+    open with an explicit flag (e.g. "that's outside my verified guide,
+    but...") - confident, unflagged specifics is the failure mode.
+    Applies to *both* adversarial cases (fully unknown destination, and
+    a known destination with an empty corpus like Bangkok) - a
+    deliberate scope decision, not just the unknown-destination case.
+    `get_weather` also stopped being gated on `KNOWN_DESTINATIONS`: a
+    destination outside it now geocodes the free-text name via
+    Open-Meteo's geocoding API (`app/open_meteo.py::geocode()`) instead
+    of raising, then runs through the same forecast/historical-average
+    logic unchanged.
+    **First live attempt under-delivered**: the model correctly called
+    `search_web` but the reply didn't flag the source at all - the
+    initial prompt wording ("that's your cue to use search_web...") was
+    too soft for this local model. Strengthened to an explicit MUST-flag
+    instruction with example phrasing and re-verified; consistent across
+    repeated live tries afterward.
+    Updated `eval/questions.yaml` q18 (Bali)/q19 (Bangkok, empty corpus):
+    tool-level behavior is unchanged (still `UnknownDestinationError`/
+    zero snippets - `run_eval.py`'s `correctly_refused_at_tool_level`/
+    `zero_snippets_returned` checks didn't need code changes), but the
+    *pass bar* for the reply flipped from "refuses" to "answers via
+    search_web/general knowledge, clearly flagged" - re-ran both via
+    `run_eval.py --id q18 q19` and confirmed the flag appears in both.
+    `TAVILY_API_KEY` via `.env` (gitignored) → `docker-compose.yml`'s
+    `${TAVILY_API_KEY}` substitution; `.env.example` documents the var
+    name with no value. New tests: `tests/test_tavily_client.py`,
+    `tests/test_web_search_service.py`, geocoding cases added to
+    `tests/test_open_meteo.py`/`test_weather_service.py`, tool-routing
+    tests in `tests/test_chat_service.py`. 100 tests total pass.
 18. Implement `search_flights(origin, dest, dates)` (Go service)
 19. Implement `search_hotels(dest, dates, budget)` (Go service)
 19a. Add a hotel/booking "hold" action (state, not just search)
@@ -269,16 +312,12 @@ imply the backend needs, beyond what was already listed above.)
 **Checkpoint:** handoff works; one agent's failure doesn't corrupt the other's output.
 
 ## Considered for later (not scheduled)
-- **Web search for uncovered destinations.** Discussed and deliberately
-  deferred: the RAG pipeline's value is the curated, calibrated corpus
-  (controlled hallucination risk, reproducible answers you can write
-  eval questions against per step 13/14) — live web search reintroduces
-  the noise that corpus curation filtered out, plus cost/latency and
-  non-reproducible results. If added, do it as a separate tool (e.g.
-  `search_web(query)`) that the agent reaches for only when a
-  destination isn't in `KNOWN_DESTINATIONS`, not blended into
-  `search_destination_knowledge` — keep curated vs. live-web answers
-  clearly separated rather than silently mixed.
+- ~~**Web search for uncovered destinations.**~~ Implemented — see step
+  17a. Originally deferred over corpus-curation/reproducibility/cost
+  concerns; revisited because clearly flagging non-curated answers
+  (rather than silently mixing them in) addresses the original concern
+  well enough to be worth it now. The separate-tool, not-blended design
+  constraint from this note carried through into the implementation.
 
 ## Conventions (see CLAUDE.md)
 - pytest for Python tests

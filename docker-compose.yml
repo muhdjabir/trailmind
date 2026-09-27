@@ -28,6 +28,9 @@ services:
       # Ollama runs natively on the host, not in a container - reach it
       # via Docker's host gateway (extra_hosts below covers Linux too).
       OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Read from the repo-root .env (gitignored) via compose's default
+      # env-file substitution - never hardcode the actual key here.
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
