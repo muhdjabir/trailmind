@@ -1,9 +1,12 @@
+import datetime
 from unittest.mock import Mock, patch
 
 from app.agent import run_agent
+from app.chat_history import ChatMessage
 from app.embeddings import EmbeddingError
 from app.llm import LLMTurn, ToolCall
 from app.tools import Snippet, UnknownDestinationError
+from app.trips import Trip, TripNotFoundError
 
 
 class FakeLLMClient:
@@ -118,6 +121,76 @@ def test_zero_snippets_fed_back_as_explicit_no_information_signal(mock_search: M
     tool_message = llm.calls[1][-1]
     assert "no_information_found" in tool_message["content"]
     assert "snippets" not in tool_message["content"]
+
+
+def _fake_trip(**overrides) -> Trip:
+    defaults = dict(
+        id=1,
+        user_id=None,
+        name="Bangkok trip",
+        destinations=["bangkok"],
+        start_date=None,
+        end_date=None,
+        party_size=None,
+        status="draft",
+        budget_planned=None,
+        budget_total=None,
+        created_at=datetime.datetime(2026, 1, 1),
+        updated_at=datetime.datetime(2026, 1, 1),
+    )
+    defaults.update(overrides)
+    return Trip(**defaults)
+
+
+@patch("app.agent.append_message")
+@patch("app.agent.list_messages")
+@patch("app.agent.get_trip")
+def test_trip_id_injects_summary_and_history_into_context(
+    mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip(name="Bangkok trip")
+    mock_list_messages.return_value = [
+        ChatMessage(id=1, trip_id=1, role="user", content="earlier question",
+                    created_at=datetime.datetime(2026, 1, 1)),
+        ChatMessage(id=2, trip_id=1, role="assistant", content="earlier answer",
+                    created_at=datetime.datetime(2026, 1, 1)),
+    ]
+    llm = FakeLLMClient([LLMTurn(content="Here's more info.")])
+
+    result = run_agent("follow-up question", llm=llm, conn=Mock(), trip_id=1)
+
+    assert result == "Here's more info."
+    sent_messages = llm.calls[0]
+    assert any("Bangkok trip" in m["content"] for m in sent_messages if m["role"] == "system")
+    assert {"role": "user", "content": "earlier question"} in sent_messages
+    assert {"role": "assistant", "content": "earlier answer"} in sent_messages
+    assert sent_messages[-1] == {"role": "user", "content": "follow-up question"}
+
+
+@patch("app.agent.append_message")
+@patch("app.agent.list_messages", return_value=[])
+@patch("app.agent.get_trip")
+def test_trip_id_persists_user_and_assistant_messages(
+    mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    llm = FakeLLMClient([LLMTurn(content="the reply")])
+
+    run_agent("the question", llm=llm, conn=Mock(), trip_id=7)
+
+    mock_append_message.assert_any_call(mock_get_trip.call_args[0][0], 7, "user", "the question")
+    mock_append_message.assert_any_call(mock_get_trip.call_args[0][0], 7, "assistant", "the reply")
+
+
+@patch("app.agent.get_trip", side_effect=TripNotFoundError("no trip with id 99"))
+def test_unknown_trip_id_raises_without_calling_llm(mock_get_trip: Mock) -> None:
+    llm = Mock()
+    try:
+        run_agent("hello", llm=llm, conn=Mock(), trip_id=99)
+        assert False, "expected TripNotFoundError"
+    except TripNotFoundError:
+        pass
+    llm.chat.assert_not_called()
 
 
 def test_gives_up_after_max_tool_rounds() -> None:

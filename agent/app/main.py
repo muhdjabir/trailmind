@@ -27,6 +27,7 @@ def health() -> dict[str, str]:
 
 class ChatRequest(BaseModel):
     message: str
+    trip_id: int | None = None
 
 
 class ChatResponse(BaseModel):
@@ -41,9 +42,11 @@ def chat(req: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
     try:
-        reply = run_agent(req.message, conn=conn)
+        reply = run_agent(req.message, conn=conn, trip_id=req.trip_id)
     except LLMError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
+    except TripNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     finally:
         conn.close()
 

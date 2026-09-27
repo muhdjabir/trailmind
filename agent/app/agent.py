@@ -14,10 +14,12 @@ import json
 
 import psycopg
 
+from app.chat_history import append_message, list_messages
 from app.destinations import KNOWN_DESTINATIONS
 from app.embeddings import EmbeddingError
 from app.llm import LLMClient, OllamaLLMClient
 from app.tools import UnknownDestinationError, search_destination_knowledge
+from app.trips import get_trip, trip_summary
 from app.vector_store import VectorStoreError
 
 MAX_TOOL_ROUNDS = 3
@@ -111,18 +113,37 @@ def run_agent(
     llm: LLMClient | None = None,
     conn: psycopg.Connection | None = None,
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    trip_id: int | None = None,
 ) -> str:
-    llm = llm or OllamaLLMClient()
-    messages: list[dict] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message},
-    ]
+    """Run one chat turn.
 
+    If `trip_id` is given (requires `conn`): re-hydrates a compact trip-
+    state summary and this trip's prior chat history into context (see
+    CLAUDE.md "State model"), and persists this turn's user/assistant
+    messages afterwards. Raises TripNotFoundError if the id doesn't
+    exist - the caller (e.g. the API layer) decides how to surface that.
+    Without `trip_id`, behaves exactly as before: a single stateless turn.
+    """
+    llm = llm or OllamaLLMClient()
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    if trip_id is not None:
+        trip = get_trip(conn, trip_id)
+        messages.append(
+            {"role": "system", "content": f"Current trip state: {trip_summary(trip)}"}
+        )
+        for past in list_messages(conn, trip_id):
+            messages.append({"role": past.role, "content": past.content})
+
+    messages.append({"role": "user", "content": user_message})
+
+    reply = None
     for _ in range(max_tool_rounds):
         turn = llm.chat(messages, tools=[TOOL_SCHEMA])
 
         if not turn.tool_calls:
-            return turn.content or ""
+            reply = turn.content or ""
+            break
 
         messages.append(
             {
@@ -140,9 +161,17 @@ def run_agent(
                 {"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)}
             )
 
-    # Exceeded max_tool_rounds without a final answer - infra-level guard
-    # against an LLM stuck calling tools, not a policy decision for it to make.
-    return (
-        "I wasn't able to put together an answer after checking the knowledge "
-        "base a few times - could you rephrase your question?"
-    )
+    if reply is None:
+        # Exceeded max_tool_rounds without a final answer - infra-level
+        # guard against an LLM stuck calling tools, not a policy decision
+        # for it to make.
+        reply = (
+            "I wasn't able to put together an answer after checking the "
+            "knowledge base a few times - could you rephrase your question?"
+        )
+
+    if trip_id is not None:
+        append_message(conn, trip_id, "user", user_message)
+        append_message(conn, trip_id, "assistant", reply)
+
+    return reply

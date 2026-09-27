@@ -80,3 +80,17 @@ CREATE TABLE IF NOT EXISTS itinerary_days (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (trip_id, day_number)
 );
+
+-- Chat history per trip (v1 step 16): each turn's user/assistant messages,
+-- so a trip's conversation has continuity across turns. Deliberately just
+-- the final user/assistant text of each turn, not the intra-turn tool-call
+-- round trips (those are re-derived fresh each turn, not replayed).
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id BIGSERIAL PRIMARY KEY,
+    trip_id BIGINT NOT NULL REFERENCES trips (id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_trip_id ON chat_messages (trip_id, created_at);

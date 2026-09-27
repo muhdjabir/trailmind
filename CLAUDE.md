@@ -35,6 +35,11 @@ reasoning over tools, for destinations the user is actively planning
 - Shape: { destinations, dates, budget, itinerary_by_day }
 - Each turn re-hydrates a compact summary of trip state into context,
   not the full conversation.
+- `run_agent(..., trip_id=...)` does this: injects the trip's compact
+  summary (`app/trips.py::trip_summary()`) plus its prior chat history
+  (`chat_messages` table, `app/chat_history.py`) into context, then
+  persists this turn's user/assistant messages after replying. Without
+  `trip_id` it's a single stateless turn, unchanged from before.
 
 ## Tool error handling
 - Tools return structured results or a typed error — never silent failure.

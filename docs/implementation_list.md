@@ -132,10 +132,30 @@ of the retrieval/hallucination fixes.
     them up. Unit + integration tests in `tests/test_trips.py` and
     `tests/test_main_trips.py`; also verified live against the running
     `trailmind-agent` container (create/list/404-on-missing all correct).
-16. Wire trip state read/write into agent context (compact summary per turn, not full history)
+16. ✅ Wire trip state read/write into agent context (compact summary per turn, not full history)
     — also needs the chat *history* itself persisted per trip (today
     every message is independent - see `agent/app/agent.py::run_agent()`),
     not just the derived trip-state summary.
+    — `run_agent()` gained an optional `trip_id` param (still a single
+    stateless turn without it, unchanged). With it: fetches the trip
+    (`TripNotFoundError` propagates - caller decides, e.g. `POST /chat`
+    now 404s on an unknown `trip_id`), injects a compact one-line-ish
+    summary via new `app/trips.py::trip_summary()` as a system message
+    (not the full row/itinerary - matches CLAUDE.md's "compact summary,
+    not full conversation"), then loads and replays this trip's prior
+    turns from a new `chat_messages` table (`app/chat_history.py`) before
+    the new user message. After the reply, persists this turn's
+    user+assistant messages - deliberately just the final text of each
+    turn, not the intra-turn tool-call round trips, which are re-derived
+    fresh every turn rather than replayed. `POST /chat` takes an optional
+    `trip_id`. Verified live: two chained `/chat` calls against a real
+    trip correctly recalled a detail from the first turn in the second,
+    and the injected trip summary showed up in the reply unprompted
+    (mentioned "Da Nang and Hoi An" without being told); confirmed rows
+    landed correctly in `chat_messages` and cascade-deleted with the
+    trip. Unit tests in `tests/test_agent.py` (trip wiring, mocked) and
+    `tests/test_trip_summary.py`; integration tests in
+    `tests/test_chat_history.py`. 66 tests total pass.
 17. Implement `get_weather(dest, dates)`
 18. Implement `search_flights(origin, dest, dates)` (Go service)
 19. Implement `search_hotels(dest, dates, budget)` (Go service)
