@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.agent import run_agent
+from app.services.chat_service import run_agent
 from app.llm import LLMError
 from app.repositories.trips_repo import Trip, TripNotFoundError, create_trip, get_trip, list_trips
 from app.repositories.vector_store_repo import VectorStoreError, get_connection

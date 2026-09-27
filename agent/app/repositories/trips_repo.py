@@ -90,22 +90,3 @@ def get_trip(conn: psycopg.Connection, trip_id: int) -> Trip:
     if row is None:
         raise TripNotFoundError(f"no trip with id {trip_id}")
     return Trip(**row)
-
-
-def trip_summary(trip: Trip) -> str:
-    """Compact one-line-ish description of trip state for the agent's context.
-
-    Deliberately a short derived summary, not a dump of the full row/
-    itinerary - see CLAUDE.md "State model" (re-hydrate a compact summary
-    each turn, not the full conversation/state).
-    """
-    parts = [f"Trip \"{trip.name}\" (status: {trip.status})"]
-    if trip.destinations:
-        parts.append(f"Destinations: {', '.join(trip.destinations)}")
-    if trip.start_date and trip.end_date:
-        parts.append(f"Dates: {trip.start_date} to {trip.end_date}")
-    if trip.party_size:
-        parts.append(f"Party size: {trip.party_size}")
-    if trip.budget_planned or trip.budget_total:
-        parts.append(f"Budget: {trip.budget_planned or '?'} planned / {trip.budget_total or '?'} total")
-    return ". ".join(parts) + "."

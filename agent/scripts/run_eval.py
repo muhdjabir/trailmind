@@ -34,8 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import yaml
 
-from app.agent import run_agent
-from app.tools import UnknownDestinationError, search_destination_knowledge
+from app.services.chat_service import run_agent
+from app.services.knowledge_service import UnknownDestinationError, search_destination_knowledge
 from app.repositories.vector_store_repo import get_connection
 
 QUESTIONS_PATH = Path(__file__).resolve().parent.parent / "eval" / "questions.yaml"

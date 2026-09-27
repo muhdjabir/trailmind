@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from run_eval import fact_mentioned, score_question  # noqa: E402
 
-from app.tools import Snippet, UnknownDestinationError  # noqa: E402
+from app.services.knowledge_service import Snippet, UnknownDestinationError  # noqa: E402
 
 
 def test_fact_mentioned_true_on_close_paraphrase() -> None:

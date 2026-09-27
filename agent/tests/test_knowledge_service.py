@@ -2,17 +2,17 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.tools import Snippet, UnknownDestinationError, search_destination_knowledge
+from app.services.knowledge_service import Snippet, UnknownDestinationError, search_destination_knowledge
 
 
-@patch("app.tools.retrieve")
+@patch("app.services.knowledge_service.retrieve")
 def test_unknown_destination_raises_without_calling_retrieve(mock_retrieve: Mock) -> None:
     with pytest.raises(UnknownDestinationError, match="bali"):
         search_destination_knowledge("bali", "best beaches")
     mock_retrieve.assert_not_called()
 
 
-@patch("app.tools.retrieve")
+@patch("app.services.knowledge_service.retrieve")
 def test_known_destination_returns_ranked_snippets(mock_retrieve: Mock) -> None:
     mock_retrieve.return_value = [
         {
@@ -56,7 +56,7 @@ def test_known_destination_returns_ranked_snippets(mock_retrieve: Mock) -> None:
     ]
 
 
-@patch("app.tools.retrieve")
+@patch("app.services.knowledge_service.retrieve")
 def test_city_argument_is_passed_through_to_retrieve(mock_retrieve: Mock) -> None:
     mock_retrieve.return_value = []
 
@@ -67,7 +67,7 @@ def test_city_argument_is_passed_through_to_retrieve(mock_retrieve: Mock) -> Non
     )
 
 
-@patch("app.tools.retrieve")
+@patch("app.services.knowledge_service.retrieve")
 def test_retrieve_errors_propagate_unwrapped(mock_retrieve: Mock) -> None:
     mock_retrieve.side_effect = RuntimeError("boom")
     with pytest.raises(RuntimeError, match="boom"):

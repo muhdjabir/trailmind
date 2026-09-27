@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import psycopg
 
 from app.destinations import KNOWN_DESTINATIONS
-from app.retrieval import retrieve
+from app.services.retrieval_service import retrieve
 
 
 class UnknownDestinationError(Exception):

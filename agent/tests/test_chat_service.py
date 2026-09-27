@@ -1,11 +1,11 @@
 import datetime
 from unittest.mock import Mock, patch
 
-from app.agent import run_agent
+from app.services.chat_service import run_agent
 from app.repositories.chat_history_repo import ChatMessage
 from app.embeddings import EmbeddingError
 from app.llm import LLMTurn, ToolCall
-from app.tools import Snippet, UnknownDestinationError
+from app.services.knowledge_service import Snippet, UnknownDestinationError
 from app.repositories.trips_repo import Trip, TripNotFoundError
 
 
@@ -26,7 +26,7 @@ def test_final_text_answer_with_no_tool_call() -> None:
     assert run_agent("hello", llm=llm) == "Hi there!"
 
 
-@patch("app.agent.search_destination_knowledge")
+@patch("app.services.chat_service.search_destination_knowledge")
 def test_tool_call_result_fed_back_and_final_answer_returned(mock_search: Mock) -> None:
     mock_search.return_value = [
         Snippet(rank=1, text="Tailor shops...", source_url="https://x", source_file="x.md", section_path="Buy", distance=0.2)
@@ -53,7 +53,7 @@ def test_tool_call_result_fed_back_and_final_answer_returned(mock_search: Mock) 
     assert "Tailor shops" in tool_message["content"]
 
 
-@patch("app.agent.search_destination_knowledge")
+@patch("app.services.chat_service.search_destination_knowledge")
 def test_unknown_destination_error_fed_back_to_llm(mock_search: Mock) -> None:
     mock_search.side_effect = UnknownDestinationError("'bali' is not covered")
     llm = FakeLLMClient(
@@ -76,7 +76,7 @@ def test_unknown_destination_error_fed_back_to_llm(mock_search: Mock) -> None:
     assert "not covered" in tool_message["content"]
 
 
-@patch("app.agent.search_destination_knowledge")
+@patch("app.services.chat_service.search_destination_knowledge")
 def test_embedding_error_fed_back_as_tool_result_not_raised(mock_search: Mock) -> None:
     mock_search.side_effect = EmbeddingError("ollama down")
     llm = FakeLLMClient(
@@ -99,7 +99,7 @@ def test_embedding_error_fed_back_as_tool_result_not_raised(mock_search: Mock) -
     assert "temporarily unavailable" in tool_message["content"]
 
 
-@patch("app.agent.search_destination_knowledge")
+@patch("app.services.chat_service.search_destination_knowledge")
 def test_zero_snippets_fed_back_as_explicit_no_information_signal(mock_search: Mock) -> None:
     mock_search.return_value = []
     llm = FakeLLMClient(
@@ -142,9 +142,9 @@ def _fake_trip(**overrides) -> Trip:
     return Trip(**defaults)
 
 
-@patch("app.agent.append_message")
-@patch("app.agent.list_messages")
-@patch("app.agent.get_trip")
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages")
+@patch("app.services.chat_service.get_trip")
 def test_trip_id_injects_summary_and_history_into_context(
     mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock
 ) -> None:
@@ -167,9 +167,9 @@ def test_trip_id_injects_summary_and_history_into_context(
     assert sent_messages[-1] == {"role": "user", "content": "follow-up question"}
 
 
-@patch("app.agent.append_message")
-@patch("app.agent.list_messages", return_value=[])
-@patch("app.agent.get_trip")
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
 def test_trip_id_persists_user_and_assistant_messages(
     mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock
 ) -> None:
@@ -182,7 +182,7 @@ def test_trip_id_persists_user_and_assistant_messages(
     mock_append_message.assert_any_call(mock_get_trip.call_args[0][0], 7, "assistant", "the reply")
 
 
-@patch("app.agent.get_trip", side_effect=TripNotFoundError("no trip with id 99"))
+@patch("app.services.chat_service.get_trip", side_effect=TripNotFoundError("no trip with id 99"))
 def test_unknown_trip_id_raises_without_calling_llm(mock_get_trip: Mock) -> None:
     llm = Mock()
     try:
@@ -202,6 +202,6 @@ def test_gives_up_after_max_tool_rounds() -> None:
         ],
     )
     llm = FakeLLMClient([looping_turn, looping_turn])
-    with patch("app.agent.search_destination_knowledge", return_value=[]):
+    with patch("app.services.chat_service.search_destination_knowledge", return_value=[]):
         result = run_agent("loop forever", llm=llm, max_tool_rounds=2)
     assert "rephrase" in result

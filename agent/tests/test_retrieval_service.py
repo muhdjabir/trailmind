@@ -1,11 +1,11 @@
 from unittest.mock import Mock, patch
 
-from app.retrieval import retrieve
+from app.services.retrieval_service import retrieve
 
 
-@patch("app.retrieval.get_connection")
-@patch("app.retrieval.search")
-@patch("app.retrieval.embed_texts")
+@patch("app.services.retrieval_service.get_connection")
+@patch("app.services.retrieval_service.search")
+@patch("app.services.retrieval_service.embed_texts")
 def test_retrieve_embeds_query_and_searches(
     mock_embed: Mock, mock_search: Mock, mock_get_connection: Mock
 ) -> None:
@@ -23,9 +23,9 @@ def test_retrieve_embeds_query_and_searches(
     assert result == [{"text": "chunk text", "source_url": "https://example.com"}]
 
 
-@patch("app.retrieval.get_connection")
-@patch("app.retrieval.search")
-@patch("app.retrieval.embed_texts")
+@patch("app.services.retrieval_service.get_connection")
+@patch("app.services.retrieval_service.search")
+@patch("app.services.retrieval_service.embed_texts")
 def test_retrieve_passes_city_through_to_search(
     mock_embed: Mock, mock_search: Mock, mock_get_connection: Mock
 ) -> None:
@@ -40,9 +40,9 @@ def test_retrieve_passes_city_through_to_search(
     )
 
 
-@patch("app.retrieval.get_connection")
-@patch("app.retrieval.search")
-@patch("app.retrieval.embed_texts")
+@patch("app.services.retrieval_service.get_connection")
+@patch("app.services.retrieval_service.search")
+@patch("app.services.retrieval_service.embed_texts")
 def test_retrieve_closes_connection_it_opened(
     mock_embed: Mock, mock_search: Mock, mock_get_connection: Mock
 ) -> None:
@@ -55,8 +55,8 @@ def test_retrieve_closes_connection_it_opened(
     mock_conn.close.assert_called_once()
 
 
-@patch("app.retrieval.search")
-@patch("app.retrieval.embed_texts")
+@patch("app.services.retrieval_service.search")
+@patch("app.services.retrieval_service.embed_texts")
 def test_retrieve_does_not_close_a_passed_in_connection(
     mock_embed: Mock, mock_search: Mock
 ) -> None:

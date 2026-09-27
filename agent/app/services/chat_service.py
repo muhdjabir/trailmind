@@ -1,4 +1,4 @@
-"""Single-agent reasoning loop over the search_destination_knowledge tool.
+"""Chat service: the single-agent reasoning loop over search_destination_knowledge.
 
 CLAUDE.md v2 note: no subagent split yet - this is the one agent.
 Tool failures aren't caught-and-hidden; they're fed back into the
@@ -14,13 +14,14 @@ import json
 
 import psycopg
 
-from app.repositories.chat_history_repo import append_message, list_messages
 from app.destinations import KNOWN_DESTINATIONS
 from app.embeddings import EmbeddingError
 from app.llm import LLMClient, OllamaLLMClient
-from app.tools import UnknownDestinationError, search_destination_knowledge
-from app.repositories.trips_repo import get_trip, trip_summary
+from app.repositories.chat_history_repo import append_message, list_messages
+from app.repositories.trips_repo import get_trip
 from app.repositories.vector_store_repo import VectorStoreError
+from app.services.knowledge_service import UnknownDestinationError, search_destination_knowledge
+from app.services.trip_context import trip_summary
 
 MAX_TOOL_ROUNDS = 3
 
