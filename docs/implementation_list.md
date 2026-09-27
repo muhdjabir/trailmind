@@ -184,7 +184,58 @@ of the retrieval/hallucination fixes.
     `main.py` into `api/{chat,trips,schemas,deps}.py`), each verified
     with the full test suite and a live smoke test against the running
     `trailmind-agent` container before moving on.
-17. Implement `get_weather(dest, dates)`
+17. ✅ Implement `get_weather(dest, dates)`
+    — Open-Meteo (free, no API key - matches the project's zero-cost-local
+    bias). `agent/app/open_meteo.py`: raw HTTP client, two endpoints
+    (`/v1/forecast` for real forecasts ~16 days out, `/v1/archive` for
+    past dates), `OpenMeteoError` typed like `EmbeddingError`/`LLMError`.
+    `agent/app/services/weather_service.py::get_weather(destination,
+    start_date, end_date, city=None)`: real forecast when `start_date` is
+    within the ~16-day horizon; otherwise averages the same calendar
+    range across the last 3 years as a "typical weather" estimate (trip
+    dates are usually months out - a bare "forecast only" tool would be
+    useless for most real questions). One failed year doesn't sink the
+    whole average (`days_sampled` reports how many years actually
+    landed); raises `OpenMeteoError` only if *all* years fail. Returns
+    raw numbers, not a pre-written summary - the agent's reply
+    synthesizes it, same as `search_destination_knowledge`.
+    Coordinates are hardcoded per destination/city (`app/destinations.py::
+    DESTINATION_COORDS`/`CITY_COORDS`/`destination_coords()`) rather than
+    geocoded at request time - simple and reliable for the fixed,
+    small `KNOWN_DESTINATIONS` set. `UnknownDestinationError` moved from
+    `knowledge_service.py` into `destinations.py` (re-exported for
+    backward compat) since it's now shared across two tools, not one.
+    Wired into `chat_service.py` as a second tool alongside
+    `search_destination_knowledge` (`TOOL_SCHEMAS` is now a list); the
+    system prompt tells the model to say plainly which kind of answer
+    it got (`forecast` vs `historical_average`) rather than presenting
+    an average as if it were today's forecast.
+    **Two real bugs found via live testing against the real local LLM**
+    (gemma4, not just mocked unit tests) **and fixed:**
+    1. The model has no notion of "today" and hallucinated stale dates
+       from its training data (asked for "the next couple days", passed
+       2024 dates) - fixed by injecting a `Today's date is ...` system
+       message computed fresh per call (not baked into the static
+       `SYSTEM_PROMPT` string, since it changes daily).
+    2. The model redundantly echoed the destination name as `city` for
+       single-city destinations (e.g. `city="bangkok"`), which the
+       original strict `destination_coords()` rejected as an unknown
+       city. Relaxed: `city` is only validated against a destination
+       that actually has a per-city breakdown (`CITY_COORDS`); for a
+       single-city destination it's silently ignored rather than
+       erroring, since it's redundant input, not genuinely invalid.
+       (Note: `search_destination_knowledge`'s `city` filter could have
+       the same latent risk for a single-city destination - not fixed
+       here, since Bangkok/Almaty have no corpus chunks yet either way
+       and it wasn't observed failing; worth checking once they do.)
+    Verified live against the running `trailmind-agent` container: a
+    near-term Bangkok question got a real forecast; a far-future Almaty
+    question correctly got - and was labeled as - a historical average;
+    a Hoi An-specific question resolved to Hoi An's coordinates, not Da
+    Nang's; an out-of-scope destination (Paris) correctly refused.
+    Unit tests: `tests/test_open_meteo.py`, `tests/test_weather_service.py`,
+    `tests/test_destinations.py`, plus tool-routing tests in
+    `tests/test_chat_service.py`. 87 tests total pass.
 18. Implement `search_flights(origin, dest, dates)` (Go service)
 19. Implement `search_hotels(dest, dates, budget)` (Go service)
 19a. Add a hotel/booking "hold" action (state, not just search)

@@ -5,10 +5,21 @@ An agentic chat app that plans trips incrementally (day by day) by
 reasoning over tools, for destinations the user is actively planning
 (currently: Da Nang/Hoi An, Bangkok, Almaty, Tokyo/Fuji/Hiroshima).
 
-## Tools (v0)
-- search_destination_knowledge(destination, query) -> ranked snippets + sources
-  RAG-backed. Only covers the destinations listed above.
-  Vector store: Postgres + pgvector (not FAISS) — schema in `database/schema.sql`.
+## Tools
+- search_destination_knowledge(destination, query, city=None) -> ranked
+  snippets + sources. RAG-backed. Only covers the destinations listed
+  above; `city` narrows within a destination that bundles several (e.g.
+  "hoi_an" within da_nang_hoi_an). Vector store: Postgres + pgvector
+  (not FAISS) — schema in `database/schema.sql`.
+- get_weather(destination, start_date, end_date, city=None) -> avg
+  high/low/precipitation. Open-Meteo (free, no API key). Real forecast
+  within ~16 days out; a historical average over the last 3 years for
+  farther-out dates (labeled as such — never presented as a live
+  forecast). Coordinates are hardcoded per destination/city in
+  `app/destinations.py`, not geocoded at request time.
+- Both tools raise `UnknownDestinationError` for an out-of-scope
+  destination (defined once in `app/destinations.py`, shared — not
+  redefined per tool).
 
 ## LLM & embeddings backend
 - Chat LLM and embeddings both run locally via Ollama by default

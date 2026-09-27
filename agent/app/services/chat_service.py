@@ -10,18 +10,21 @@ retry/surface, no fixed policy").
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import json
 
 import psycopg
 
-from app.destinations import KNOWN_DESTINATIONS
+from app.destinations import KNOWN_DESTINATIONS, UnknownCityError, UnknownDestinationError
 from app.embeddings import EmbeddingError
 from app.llm import LLMClient, OllamaLLMClient
+from app.open_meteo import OpenMeteoError
 from app.repositories.chat_history_repo import append_message, list_messages
 from app.repositories.trips_repo import get_trip
 from app.repositories.vector_store_repo import VectorStoreError
-from app.services.knowledge_service import UnknownDestinationError, search_destination_knowledge
+from app.services.knowledge_service import search_destination_knowledge
 from app.services.trip_context import trip_summary
+from app.services.weather_service import get_weather
 
 MAX_TOOL_ROUNDS = 3
 
@@ -45,10 +48,16 @@ SYSTEM_PROMPT = (
     "knowledge base doesn't cover this specific thing - even for a "
     "destination you otherwise know about. Say so honestly instead of "
     "filling the gap with plausible-sounding details from your own general "
-    "knowledge."
+    "knowledge.\n\n"
+    "You can also look up real weather for a destination and date range "
+    "with get_weather. If the dates are too far out for a real forecast "
+    "you'll get a typical/historical-average estimate instead of a live "
+    "forecast - the tool result tells you which one it is "
+    "('forecast' vs 'historical_average'); say so plainly rather than "
+    "presenting a historical average as if it were today's forecast."
 )
 
-TOOL_SCHEMA = {
+SEARCH_KNOWLEDGE_SCHEMA = {
     "type": "function",
     "function": {
         "name": "search_destination_knowledge",
@@ -81,11 +90,48 @@ TOOL_SCHEMA = {
     },
 }
 
+GET_WEATHER_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": (
+            "Real forecast (dates within ~16 days) or typical historical-average "
+            "weather (farther-out dates) for a destination. "
+            f"Only covers: {', '.join(sorted(KNOWN_DESTINATIONS))}."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "destination": {
+                    "type": "string",
+                    "description": "One of the known destination slugs.",
+                },
+                "start_date": {
+                    "type": "string",
+                    "description": "Start date, YYYY-MM-DD.",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "End date, YYYY-MM-DD (inclusive).",
+                },
+                "city": {
+                    "type": "string",
+                    "description": (
+                        "Optional: narrow to one city within a destination that "
+                        "bundles several (e.g. 'hoi_an' or 'da_nang' within "
+                        "da_nang_hoi_an)."
+                    ),
+                },
+            },
+            "required": ["destination", "start_date", "end_date"],
+        },
+    },
+}
 
-def _run_tool(name: str, arguments: dict, conn: psycopg.Connection | None) -> dict:
-    if name != "search_destination_knowledge":
-        return {"error": f"unknown tool '{name}'"}
+TOOL_SCHEMAS = [SEARCH_KNOWLEDGE_SCHEMA, GET_WEATHER_SCHEMA]
 
+
+def _run_search_destination_knowledge(arguments: dict, conn: psycopg.Connection | None) -> dict:
     try:
         snippets = search_destination_knowledge(
             destination=arguments.get("destination", ""),
@@ -109,6 +155,36 @@ def _run_tool(name: str, arguments: dict, conn: psycopg.Connection | None) -> di
         return {"error": f"knowledge base temporarily unavailable: {e}"}
 
 
+def _run_get_weather(arguments: dict) -> dict:
+    try:
+        start_date = datetime.date.fromisoformat(arguments.get("start_date", ""))
+        end_date = datetime.date.fromisoformat(arguments.get("end_date", ""))
+    except ValueError as e:
+        return {"error": f"invalid date - expected YYYY-MM-DD: {e}"}
+
+    try:
+        result = get_weather(
+            destination=arguments.get("destination", ""),
+            start_date=start_date,
+            end_date=end_date,
+            city=arguments.get("city"),
+        )
+        return {**dataclasses.asdict(result), "start_date": str(result.start_date),
+                "end_date": str(result.end_date)}
+    except (UnknownDestinationError, UnknownCityError, ValueError) as e:
+        return {"error": str(e)}
+    except OpenMeteoError as e:
+        return {"error": f"weather service temporarily unavailable: {e}"}
+
+
+def _run_tool(name: str, arguments: dict, conn: psycopg.Connection | None) -> dict:
+    if name == "search_destination_knowledge":
+        return _run_search_destination_knowledge(arguments, conn)
+    if name == "get_weather":
+        return _run_get_weather(arguments)
+    return {"error": f"unknown tool '{name}'"}
+
+
 def run_agent(
     user_message: str,
     llm: LLMClient | None = None,
@@ -126,7 +202,15 @@ def run_agent(
     Without `trip_id`, behaves exactly as before: a single stateless turn.
     """
     llm = llm or OllamaLLMClient()
-    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # The model has no other way to know the real date - without this it
+    # guesses from training data and hallucinates stale/past dates for
+    # get_weather (observed: asked "the next couple days", passed dates
+    # from 2024). Computed per-call, not baked into the static
+    # SYSTEM_PROMPT string, since it changes daily.
+    messages: list[dict] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": f"Today's date is {datetime.date.today().isoformat()}."},
+    ]
 
     if trip_id is not None:
         trip = get_trip(conn, trip_id)
@@ -140,7 +224,7 @@ def run_agent(
 
     reply = None
     for _ in range(max_tool_rounds):
-        turn = llm.chat(messages, tools=[TOOL_SCHEMA])
+        turn = llm.chat(messages, tools=TOOL_SCHEMAS)
 
         if not turn.tool_calls:
             reply = turn.content or ""

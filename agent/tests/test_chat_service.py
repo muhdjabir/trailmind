@@ -193,6 +193,66 @@ def test_unknown_trip_id_raises_without_calling_llm(mock_get_trip: Mock) -> None
     llm.chat.assert_not_called()
 
 
+@patch("app.services.chat_service.get_weather")
+def test_get_weather_tool_call_result_fed_back_and_final_answer_returned(
+    mock_get_weather: Mock,
+) -> None:
+    from app.services.weather_service import WeatherResult
+
+    mock_get_weather.return_value = WeatherResult(
+        source="forecast",
+        start_date=datetime.date(2026, 11, 1),
+        end_date=datetime.date(2026, 11, 2),
+        avg_high_c=31.0,
+        avg_low_c=25.0,
+        total_precipitation_mm=2.0,
+        days_sampled=2,
+    )
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="get_weather",
+                              arguments={"destination": "bangkok", "start_date": "2026-11-01",
+                                         "end_date": "2026-11-02"})
+                ],
+            ),
+            LLMTurn(content="Expect highs around 31C."),
+        ]
+    )
+
+    result = run_agent("what's the weather in bangkok in november", llm=llm)
+
+    assert result == "Expect highs around 31C."
+    mock_get_weather.assert_called_once()
+    tool_message = llm.calls[1][-1]
+    assert tool_message["role"] == "tool"
+    assert "forecast" in tool_message["content"]
+
+
+def test_get_weather_tool_call_with_bad_date_returns_error_without_calling_service() -> None:
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="get_weather",
+                              arguments={"destination": "bangkok", "start_date": "not-a-date",
+                                         "end_date": "2026-11-02"})
+                ],
+            ),
+            LLMTurn(content="Sorry, something went wrong with those dates."),
+        ]
+    )
+
+    result = run_agent("weather?", llm=llm)
+
+    assert result == "Sorry, something went wrong with those dates."
+    tool_message = llm.calls[1][-1]
+    assert "invalid date" in tool_message["content"]
+
+
 def test_gives_up_after_max_tool_rounds() -> None:
     looping_turn = LLMTurn(
         content=None,

@@ -12,12 +12,10 @@ from dataclasses import dataclass
 
 import psycopg
 
-from app.destinations import KNOWN_DESTINATIONS
+from app.destinations import KNOWN_DESTINATIONS, UnknownDestinationError
 from app.services.retrieval_service import retrieve
 
-
-class UnknownDestinationError(Exception):
-    """Raised when asked about a destination outside the knowledge base's coverage."""
+__all__ = ["Snippet", "UnknownDestinationError", "search_destination_knowledge"]
 
 
 @dataclass
