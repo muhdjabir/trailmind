@@ -28,7 +28,10 @@ reasoning over tools, for destinations the user is actively planning
   containers.
 
 ## State model
-- Trip state lives in Supabase, not conversation history.
+- Trip state lives in Supabase, not conversation history. Local dev
+  runs this against the same Postgres container as the vector store
+  (`trips` + `itinerary_days` in `database/schema.sql`); `DATABASE_URL`
+  is the swap point to point at real Supabase later.
 - Shape: { destinations, dates, budget, itinerary_by_day }
 - Each turn re-hydrates a compact summary of trip state into context,
   not the full conversation.

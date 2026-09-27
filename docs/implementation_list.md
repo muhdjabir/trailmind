@@ -97,11 +97,25 @@ was a separate, presentation-only track that happened independently
 of the retrieval/hallucination fixes.
 
 ## v1: Add tools + persistence
-15. Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`
+15. ✅ Add Supabase schema for trip state: `{ destinations, dates, budget, itinerary_by_day }`
     — needs to support multiple named trips per user (not just one), with
     metadata beyond the itinerary itself: name, dates, party size, status
     (e.g. "Draft itinerary"), and budget totals (planned vs. total) — see
     the sidebar trip list + header in the step 11a mockup.
+    — `trips` + `itinerary_days` tables added to `database/schema.sql`,
+    run locally against the same `trailmind-pg` container as the vector
+    store (not a real Supabase project yet — `DATABASE_URL` is the swap
+    point for that later; see CLAUDE.md "State model"). `trips` holds
+    name, `destinations` (TEXT[] of `KNOWN_DESTINATIONS` slugs, not
+    FK-constrained since that's an app-level list), dates, party size,
+    status, and planned/total budget; `user_id` is nullable and
+    unenforced for now (no auth exists yet) so it isn't a breaking
+    migration once auth lands. `itinerary_days` FKs to `trips` (cascade
+    delete) with a `(trip_id, day_number)` unique constraint and a JSONB
+    `plan` column — kept unstructured deliberately, since the actual
+    shape of a day's plan isn't known until the tools that populate it
+    (steps 17-20) exist. Verified live: applied to the running container,
+    inserted/read/cascade-deleted a sample trip + day successfully.
 15a. Trip CRUD: create/list/switch between a user's trips
     — backs the sidebar's trip list and "New trip" button (currently
     static demo chrome, see step 11a).
