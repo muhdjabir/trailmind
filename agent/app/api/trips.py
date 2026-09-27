@@ -4,9 +4,16 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_db_conn
-from app.api.schemas import ChatMessageResponse, CreateTripRequest, TripResponse
+from app.api.schemas import (
+    ChatMessageResponse,
+    CreateTripRequest,
+    ItineraryDayResponse,
+    TripResponse,
+)
 from app.repositories.chat_history_repo import list_messages
+from app.repositories.itinerary_repo import list_days
 from app.repositories.trips_repo import TripNotFoundError, create_trip, get_trip, list_trips
+from app.services.itinerary_service import day_date
 
 router = APIRouter()
 
@@ -55,3 +62,24 @@ def list_trip_messages_endpoint(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     return [ChatMessageResponse.from_message(m) for m in list_messages(conn, trip_id)]
+
+
+@router.get("/trips/{trip_id}/itinerary", response_model=list[ItineraryDayResponse])
+def list_trip_itinerary_endpoint(
+    trip_id: int, conn: psycopg.Connection = Depends(get_db_conn)
+) -> list[ItineraryDayResponse]:
+    try:
+        trip = get_trip(conn, trip_id)
+    except TripNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    return [
+        ItineraryDayResponse(
+            day_number=d.day_number,
+            date=day_date(trip, d.day_number),
+            title=d.plan.get("title", ""),
+            items=d.plan.get("items", []),
+            updated_at=d.updated_at,
+        )
+        for d in list_days(conn, trip_id)
+    ]

@@ -1,6 +1,8 @@
 import datetime
 from unittest.mock import Mock, patch
 
+import pytest
+
 from app.services.chat_service import run_agent
 from app.repositories.chat_history_repo import ChatMessage
 from app.embeddings import EmbeddingError
@@ -15,10 +17,16 @@ class FakeLLMClient:
     def __init__(self, turns: list[LLMTurn]):
         self._turns = list(turns)
         self.calls: list[list[dict]] = []
+        self.tools_offered: list[list[dict]] = []
 
     def chat(self, messages, tools):
         self.calls.append(messages)
+        self.tools_offered.append(tools)
         return self._turns.pop(0)
+
+
+def _tool_names(tools: list[dict]) -> set[str]:
+    return {t["function"]["name"] for t in tools}
 
 
 def test_final_text_answer_with_no_tool_call() -> None:
@@ -142,11 +150,12 @@ def _fake_trip(**overrides) -> Trip:
     return Trip(**defaults)
 
 
+@patch("app.services.chat_service.list_days", return_value=[])
 @patch("app.services.chat_service.append_message")
 @patch("app.services.chat_service.list_messages")
 @patch("app.services.chat_service.get_trip")
 def test_trip_id_injects_summary_and_history_into_context(
-    mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock
+    mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock, mock_list_days: Mock
 ) -> None:
     mock_get_trip.return_value = _fake_trip(name="Bangkok trip")
     mock_list_messages.return_value = [
@@ -165,13 +174,20 @@ def test_trip_id_injects_summary_and_history_into_context(
     assert {"role": "user", "content": "earlier question"} in sent_messages
     assert {"role": "assistant", "content": "earlier answer"} in sent_messages
     assert sent_messages[-1] == {"role": "user", "content": "follow-up question"}
+    # Trip state + itinerary rules come after the replayed history (see run_agent).
+    history_index = sent_messages.index({"role": "assistant", "content": "earlier answer"})
+    summary_index = next(
+        i for i, m in enumerate(sent_messages) if "Bangkok trip" in m["content"]
+    )
+    assert summary_index > history_index
 
 
+@patch("app.services.chat_service.list_days", return_value=[])
 @patch("app.services.chat_service.append_message")
 @patch("app.services.chat_service.list_messages", return_value=[])
 @patch("app.services.chat_service.get_trip")
 def test_trip_id_persists_user_and_assistant_messages(
-    mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock
+    mock_get_trip: Mock, mock_list_messages: Mock, mock_append_message: Mock, mock_list_days: Mock
 ) -> None:
     mock_get_trip.return_value = _fake_trip()
     llm = FakeLLMClient([LLMTurn(content="the reply")])
@@ -304,6 +320,350 @@ def test_search_web_tool_error_fed_back_not_raised(mock_search_web: Mock) -> Non
     assert result == "Sorry, web search isn't available right now."
     tool_message = llm.calls[1][-1]
     assert "temporarily unavailable" in tool_message["content"]
+
+
+@patch("app.services.chat_service.search_web", return_value=[])
+def test_text_written_alongside_tool_calls_kept_in_reply(mock_search_web: Mock) -> None:
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content="Here's a 4-day plan.",
+                tool_calls=[ToolCall(id="call_1", name="search_web", arguments={"query": "x"})],
+            ),
+            LLMTurn(content="Want me to change anything?"),
+        ]
+    )
+
+    result = run_agent("plan it", llm=llm)
+
+    assert result == "Here's a 4-day plan.\n\nWant me to change anything?"
+
+
+@patch("app.services.chat_service.search_web", return_value=[])
+def test_final_turn_repeating_interim_text_not_duplicated(mock_search_web: Mock) -> None:
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content="Here's the plan. Sound good?",
+                tool_calls=[ToolCall(id="call_1", name="search_web", arguments={"query": "x"})],
+            ),
+            LLMTurn(content="Sound good?"),
+        ]
+    )
+
+    assert run_agent("plan it", llm=llm) == "Here's the plan. Sound good?"
+
+
+def test_empty_turn_is_retried_not_returned() -> None:
+    llm = FakeLLMClient([LLMTurn(content=""), LLMTurn(content="Here you go.")])
+    assert run_agent("hello", llm=llm) == "Here you go."
+    assert len(llm.calls) == 2
+
+
+def test_save_itinerary_day_not_offered_without_trip() -> None:
+    llm = FakeLLMClient([LLMTurn(content="hi")])
+    run_agent("hello", llm=llm)
+    assert "save_itinerary_day" not in _tool_names(llm.tools_offered[0])
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.save_itinerary_day")
+def test_save_itinerary_day_uses_current_trip_id_not_llm_args(
+    mock_save: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    from app.repositories.itinerary_repo import ItineraryDay
+
+    mock_get_trip.return_value = _fake_trip()
+    mock_save.return_value = ItineraryDay(
+        id=1, trip_id=5, day_number=3, plan={"title": "Sintra", "items": ["Pena"]},
+        updated_at=datetime.datetime(2026, 1, 1),
+    )
+    conn = Mock()
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="save_itinerary_day",
+                              arguments={"day": 3, "title": "Sintra", "items": ["Pena"],
+                                         "trip_id": 999})
+                ],
+            ),
+            LLMTurn(content="Added Sintra to day 3."),
+        ]
+    )
+
+    result = run_agent("plan day 3", llm=llm, conn=conn, trip_id=5)
+
+    assert result == "Added Sintra to day 3."
+    assert "save_itinerary_day" in _tool_names(llm.tools_offered[0])
+    mock_save.assert_called_once_with(conn, 5, day=3, title="Sintra", items=["Pena"])
+    assert '"saved": true' in llm.calls[1][-1]["content"]
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.save_itinerary_day")
+def test_invalid_itinerary_day_error_fed_back_not_raised(
+    mock_save: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    from app.services.itinerary_service import InvalidItineraryDayError
+
+    mock_get_trip.return_value = _fake_trip()
+    mock_save.side_effect = InvalidItineraryDayError("day 9 is outside this trip's dates")
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="save_itinerary_day",
+                              arguments={"day": 9, "title": "Extra", "items": []})
+                ],
+            ),
+            LLMTurn(content="Your trip is only 6 days long."),
+        ]
+    )
+
+    result = run_agent("add day 9", llm=llm, conn=Mock(), trip_id=1)
+
+    assert result == "Your trip is only 6 days long."
+    assert "outside this trip's dates" in llm.calls[1][-1]["content"]
+
+
+def _trip_turn(tool_name: str, arguments: dict, final: str) -> FakeLLMClient:
+    return FakeLLMClient(
+        [
+            LLMTurn(content=None,
+                    tool_calls=[ToolCall(id="call_1", name=tool_name, arguments=arguments)]),
+            LLMTurn(content=final),
+        ]
+    )
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.change_trip_dates")
+def test_update_trip_dates_tool_parses_dates_and_reports_length(
+    mock_change: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    mock_change.return_value = (
+        _fake_trip(start_date=datetime.date(2026, 11, 6), end_date=datetime.date(2026, 11, 11)),
+        [],
+    )
+    conn = Mock()
+    llm = _trip_turn("update_trip_dates",
+                     {"start_date": "2026-11-06", "end_date": "2026-11-11"}, "Extended.")
+
+    run_agent("add 2 days", llm=llm, conn=conn, trip_id=5)
+
+    mock_change.assert_called_once_with(
+        conn, 5, datetime.date(2026, 11, 6), datetime.date(2026, 11, 11),
+        drop_days_past_end=False,
+    )
+    assert '"days": 6' in llm.calls[1][-1]["content"]
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.change_trip_dates")
+def test_update_trip_dates_drop_flag_passed_and_dropped_days_reported(
+    mock_change: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    mock_change.return_value = (
+        _fake_trip(start_date=datetime.date(2026, 11, 6), end_date=datetime.date(2026, 11, 8)),
+        [4, 5],
+    )
+    llm = _trip_turn(
+        "update_trip_dates",
+        {"start_date": "2026-11-06", "end_date": "2026-11-08", "drop_days_past_end": True},
+        "Trimmed to 3 days.",
+    )
+
+    run_agent("make it 3 days, drop the rest", llm=llm, conn=Mock(), trip_id=5)
+
+    assert mock_change.call_args.kwargs == {"drop_days_past_end": True}
+    assert '"dropped_days": [4, 5]' in llm.calls[1][-1]["content"]
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.change_trip_dates")
+def test_drop_flag_ignored_when_user_did_not_ask_to_drop(
+    mock_change: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    from app.services.itinerary_service import InvalidTripDatesError
+
+    mock_get_trip.return_value = _fake_trip()
+    mock_change.side_effect = InvalidTripDatesError("day(s) 4, 5 still have saved plans")
+    llm = _trip_turn(
+        "update_trip_dates",
+        {"start_date": "2026-11-06", "end_date": "2026-11-08", "drop_days_past_end": True},
+        "Want me to drop days 4 and 5?",
+    )
+
+    run_agent("Can we make the trip 3 days?", llm=llm, conn=Mock(), trip_id=5)
+
+    assert mock_change.call_args.kwargs == {"drop_days_past_end": False}
+    tool_content = llm.calls[1][-1]["content"]
+    assert "drop_days_past_end was ignored" in tool_content
+    assert "don't retry" in tool_content
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["Shorten to 3 days and drop the rest", "remove the last two days", "cut it to 3 days",
+     "get rid of days 4 and 5", "yes, delete them"],
+)
+def test_drop_intent_recognised(message: str) -> None:
+    from app.services.chat_service import _DROP_INTENT
+
+    assert _DROP_INTENT.search(message)
+
+
+@pytest.mark.parametrize(
+    "message", ["Can we make the trip 3 days?", "shorten the trip please", "close to the beach"]
+)
+def test_no_drop_intent(message: str) -> None:
+    from app.services.chat_service import _DROP_INTENT
+
+    assert not _DROP_INTENT.search(message)
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.change_trip_dates")
+def test_drop_flag_requires_real_boolean(
+    mock_change: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    mock_change.return_value = (_fake_trip(), [])
+    llm = _trip_turn(
+        "update_trip_dates",
+        {"start_date": "2026-11-06", "end_date": "2026-11-08", "drop_days_past_end": "false"},
+        "ok",
+    )
+
+    run_agent("shorten", llm=llm, conn=Mock(), trip_id=5)
+
+    assert mock_change.call_args.kwargs == {"drop_days_past_end": False}
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.change_trip_dates")
+def test_update_trip_dates_bad_date_fed_back_without_calling_service(
+    mock_change: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    llm = _trip_turn("update_trip_dates",
+                     {"start_date": "next friday", "end_date": "2026-11-11"}, "Which dates?")
+
+    run_agent("move it", llm=llm, conn=Mock(), trip_id=5)
+
+    mock_change.assert_not_called()
+    assert "invalid date" in llm.calls[1][-1]["content"]
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.change_trip_dates")
+def test_shortening_refusal_fed_back_not_raised(
+    mock_change: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    from app.services.itinerary_service import InvalidTripDatesError
+
+    mock_get_trip.return_value = _fake_trip()
+    mock_change.side_effect = InvalidTripDatesError("day(s) 4 still have saved plans")
+    llm = _trip_turn("update_trip_dates",
+                     {"start_date": "2026-11-06", "end_date": "2026-11-08"}, "Day 4 has plans.")
+
+    assert run_agent("shorten it", llm=llm, conn=Mock(), trip_id=5) == "Day 4 has plans."
+    assert "still have saved plans" in llm.calls[1][-1]["content"]
+
+
+@patch("app.services.chat_service.list_days", return_value=[])
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.delete_itinerary_day")
+def test_delete_itinerary_day_tool_uses_current_trip(
+    mock_delete: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    mock_get_trip.return_value = _fake_trip()
+    conn = Mock()
+    llm = _trip_turn("delete_itinerary_day", {"day": 2}, "Cleared day 2.")
+
+    run_agent("drop day 2", llm=llm, conn=conn, trip_id=5)
+
+    mock_delete.assert_called_once_with(conn, 5, 2)
+    assert '"deleted": true' in llm.calls[1][-1]["content"]
+    assert {"delete_itinerary_day", "update_trip_dates"} <= _tool_names(llm.tools_offered[0])
+
+
+def test_trip_tools_not_offered_without_trip() -> None:
+    llm = FakeLLMClient([LLMTurn(content="hi")])
+    run_agent("hello", llm=llm)
+    assert not {"delete_itinerary_day", "update_trip_dates"} & _tool_names(llm.tools_offered[0])
+
+
+def test_save_itinerary_day_without_trip_returns_error() -> None:
+    llm = FakeLLMClient(
+        [
+            LLMTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="call_1", name="save_itinerary_day",
+                              arguments={"day": 1, "title": "x", "items": []})
+                ],
+            ),
+            LLMTurn(content="Pick a trip first."),
+        ]
+    )
+
+    run_agent("plan day 1", llm=llm)
+
+    assert "no trip is selected" in llm.calls[1][-1]["content"]
+
+
+@patch("app.services.chat_service.append_message")
+@patch("app.services.chat_service.list_messages", return_value=[])
+@patch("app.services.chat_service.get_trip")
+@patch("app.services.chat_service.list_days")
+def test_trip_context_includes_existing_itinerary(
+    mock_list_days: Mock, mock_get_trip: Mock, *_: Mock
+) -> None:
+    from app.repositories.itinerary_repo import ItineraryDay
+
+    mock_get_trip.return_value = _fake_trip()
+    mock_list_days.return_value = [
+        ItineraryDay(id=1, trip_id=1, day_number=1, plan={"title": "Arrive", "items": ["Hotel"]},
+                     updated_at=datetime.datetime(2026, 1, 1)),
+    ]
+    llm = FakeLLMClient([LLMTurn(content="ok")])
+
+    run_agent("what's on day 1?", llm=llm, conn=Mock(), trip_id=1)
+
+    system_text = " ".join(m["content"] for m in llm.calls[0] if m["role"] == "system")
+    assert "Day 1: Arrive (Hotel)" in system_text
 
 
 def test_gives_up_after_max_tool_rounds() -> None:

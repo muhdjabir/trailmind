@@ -48,6 +48,16 @@ class TripResponse(BaseModel):
         return cls(**trip.__dict__)
 
 
+class ItineraryDayResponse(BaseModel):
+    day_number: int
+    # Derived from the trip's start_date, never stored - None while the
+    # trip's dates are still open.
+    date: datetime.date | None
+    title: str
+    items: list[str]
+    updated_at: datetime.datetime
+
+
 class ChatMessageResponse(BaseModel):
     role: str
     content: str

@@ -143,8 +143,8 @@ of the retrieval/hallucination fixes.
     saved conversation, which nothing exposed yet, so added
     `GET /trips/{id}/messages` (404s on an unknown trip, same as
     `GET /trips/{id}`) backed by the existing `chat_history_repo.list_messages`.
-    `ItineraryPanel` stays static - no itinerary-day endpoints exist yet
-    (that's step 20). Verified in a real browser: created a trip via the
+    `ItineraryPanel` stayed static at this point - wired to real data
+    in step 20. Verified in a real browser: created a trip via the
     inline form, asked it a question (correctly got the honest
     "no_information_found" refusal for empty-corpus Bangkok, per step
     14's fix), switched to a second trip and back, and the first trip's
@@ -284,7 +284,89 @@ of the retrieval/hallucination fixes.
 19a. Add a hotel/booking "hold" action (state, not just search)
     — the mockup's "Hold both" / "Show cheaper" buttons imply discrete
     mutations the backend must expose and apply, beyond a read-only search.
-20. Implement `save_itinerary_day(day, plan)` → Supabase write
+20. ✅ Implement `save_itinerary_day(day, plan)` → Supabase write
+    — Tool is `save_itinerary_day(day, title, items)`. `plan` JSONB shape
+    is `{title, items: [str]}`, matching the mockup's day cards (headline
+    + " · "-joined detail line). Items are plain strings for now;
+    structured costs/durations wait for flights/hotels (18/19) so 22a
+    has real data. Date/weekday are never stored - derived from
+    `trip.start_date + day - 1` (`itinerary_service.day_date()`), and
+    shown as "Day N" while trip dates are open.
+    Layers: `repositories/itinerary_repo.py` (`list_days`, `upsert_day` -
+    `ON CONFLICT` replace, bumps `updated_at` for 20a),
+    `services/itinerary_service.py` (shape + day-range validation,
+    typed `InvalidItineraryDayError`), tool wiring in `chat_service.py`,
+    `GET /trips/{id}/itinerary`. `ItineraryPanel.tsx` now renders real
+    days and re-fetches after every `/chat` reply.
+    Decisions (user-confirmed): one day per call, not a batch tool
+    (`MAX_TOOL_ROUNDS` raised 3 → 8 to fit a full trip, though in
+    practice gemma4 issued all days as parallel calls in one round);
+    writes happen immediately, no confirm step. `trip_id` comes from
+    `run_agent`, never from the model's arguments, and the tool is only
+    offered on trip-scoped turns. Each call replaces the whole day, so
+    `trip_summary()` now includes each saved day's title *and* items -
+    the model needs them to edit a day without dropping what's there.
+    **Bugs found via live testing against gemma4, fixed:**
+    1. Text the model wrote alongside its tool calls (often the actual
+       plan) was discarded - only the final turn's text was returned, so
+       the user saw just "Let me know if you want to swap anything".
+       `run_agent` now keeps that interim text, skipping a final line
+       that only repeats it.
+    2. Items came back as full sentences ("Morning: Take a Vietnamese
+       cooking class..."). Prompt + schema now require 2-5 word labels.
+    3. Only 3 of 4 days saved for a 4-day trip - trip length now appears
+       in the summary ("(4 days)") and the prompt says a full plan means
+       every day.
+    4. **Claimed saves that never happened:** by the third turn the model
+       replied "I've updated Day 3" with no tool call. History replays
+       only final text, so past "I've updated…" replies read like the
+       pattern to follow. A "never claim a save you didn't make" rule
+       alone didn't fix it; moving the trip summary + itinerary rules to
+       *after* the replayed history (right before the user message) did.
+       Re-verified on two fresh trips: all 4 days saved on the first
+       turn, both follow-up edits saved and existing items kept.
+    Verified in a real browser: panel shows real dates/weekdays and
+    refreshes after a reply without a page reload.
+    Tests: `tests/test_itinerary_repo.py` (integration),
+    `tests/test_itinerary_service.py`, plus additions to
+    `test_chat_service.py`, `test_trip_context.py`, `test_main_trips.py`.
+    128 tests total pass.
+20b. ✅ Change trip dates and remove days
+    — the step 20 gap: asked to "add a day 6" to a 4-day trip, the agent
+    had no way to extend it. Two more trip-scoped tools:
+    `delete_itinerary_day(day)` clears one day without renumbering the
+    rest, and `update_trip_dates(start_date, end_date,
+    drop_days_past_end=false)`. `trips_repo.update_trip_dates`,
+    `itinerary_repo.delete_day`/`delete_days_after`, rules in
+    `itinerary_service.change_trip_dates`/`delete_itinerary_day`. The
+    page now reloads the trip itself (not just the itinerary) after each
+    reply so date changes show in the sidebar.
+    Renumbering ("drop day 2 and shift everything up") deliberately left
+    out - the model can do it by resaving days, and it's more room for a
+    small model to lose track of which day is which.
+    **Iterated via live testing against gemma4:**
+    1. First version: shortening past saved days was always refused,
+       and the model had to delete them then change the dates. In full
+       conversations it often deleted the days and stopped, then told
+       the user the trip was shorter when the dates hadn't changed (2
+       of 3 runs). Fix: `drop_days_past_end` does both in one call -
+       then 3 of 3 correct.
+    2. But gemma4 then set the flag for a plain "can we make the trip 3
+       days?" and deleted saved days unasked (2 of 3). Fix: the flag is
+       only honored if this turn's user message says to drop/remove/
+       delete/cut (`_DROP_INTENT`); otherwise it's ignored, the tool
+       refuses, and the model is told to ask. After: vague request kept
+       all days (3 of 3), explicit request and "can we…" → "yes, drop
+       them" both worked.
+    3. gemma4 occasionally returns a completely empty turn (no text, no
+       tool calls), which showed as a blank reply. `run_agent` now asks
+       again instead, within `MAX_TOOL_ROUNDS`.
+    Known remaining quirk: the model sometimes words a refused change as
+    done ("I've adjusted the dates") before asking to confirm - data
+    stays correct, the wording doesn't. Also, adding a day at the end
+    doesn't make the model move an existing "departure" day, so
+    departure can end up before the new last day.
+    159 tests total pass.
 20a. Surface agent-initiated itinerary diffs to the UI (e.g. "Just added")
     — a way for the frontend to know *what changed* in the itinerary
     after a turn, not just fetch the new state wholesale.
@@ -318,6 +400,19 @@ imply the backend needs, beyond what was already listed above.)
   (rather than silently mixing them in) addresses the original concern
   well enough to be worth it now. The separate-tool, not-blended design
   constraint from this note carried through into the implementation.
+- **Extract `get_weather`/`search_web` into Go microservices.** Per
+  CLAUDE.md's stated convention ("Go owns tool microservices"), but not
+  actually done yet — both currently live as plain Python modules
+  (`app/open_meteo.py`, `app/tavily_client.py`) called in-process from
+  `chat_service.py`. Candidates because they're simple, stateless,
+  external-API-calling tools with no RAG/embedding dependency — the
+  kind of thing that benefits from being deployed/scaled independently
+  of the Python agent and called over HTTP/gRPC instead. Same applies
+  to `search_flights`/`search_hotels` (steps 18/19) once built, which
+  were already scoped as Go from the start. Not scheduled until v1's
+  other tool work settles and the split's boundary (what crosses
+  the Python/Go line, how errors propagate back as the same typed-error
+  pattern used everywhere else) is worth the added deploy complexity.
 
 ## Conventions (see CLAUDE.md)
 - pytest for Python tests

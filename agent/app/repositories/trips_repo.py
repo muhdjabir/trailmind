@@ -83,6 +83,28 @@ def list_trips(conn: psycopg.Connection, user_id: str | None = None) -> list[Tri
     return [Trip(**row) for row in rows]
 
 
+def update_trip_dates(
+    conn: psycopg.Connection,
+    trip_id: int,
+    start_date: datetime.date,
+    end_date: datetime.date,
+) -> Trip:
+    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        cur.execute(
+            """
+            UPDATE trips SET start_date = %s, end_date = %s, updated_at = now()
+            WHERE id = %s
+            RETURNING *
+            """,
+            (start_date, end_date, trip_id),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    if row is None:
+        raise TripNotFoundError(f"no trip with id {trip_id}")
+    return Trip(**row)
+
+
 def get_trip(conn: psycopg.Connection, trip_id: int) -> Trip:
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         cur.execute("SELECT * FROM trips WHERE id = %s", (trip_id,))

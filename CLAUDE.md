@@ -28,6 +28,24 @@ reasoning over tools, for destinations the user is actively planning
   this is a strengthened, MUST-level instruction in `SYSTEM_PROMPT`
   (chat_service.py); a softer phrasing was tried first and the local
   model just skipped it.
+- save_itinerary_day(day, title, items) -> replaces one day of the
+  current trip's itinerary (`itinerary_days`). Only offered when the
+  turn has a `trip_id`, which `run_agent` supplies itself - never an
+  LLM argument. Writes immediately, no confirmation step. `items` are
+  short 2-5 word labels, not sentences. Bad day/shape raises
+  `InvalidItineraryDayError` (fed back to the model).
+- delete_itinerary_day(day) -> clears one day; other days keep their
+  numbers (no renumbering).
+- update_trip_dates(start_date, end_date, drop_days_past_end=false) ->
+  sets/moves/extends/shortens the trip. Day dates are derived from
+  `start_date`, so moving needs no itinerary rewrite. Shortening past
+  saved days is refused (`InvalidTripDatesError`) unless
+  `drop_days_past_end` is set, which deletes them in the same call.
+  That flag is only honored when the user's message this turn says to
+  drop/remove/delete/cut them (`_DROP_INTENT` in chat_service.py) -
+  enforced in code because gemma4 set it for a plain "can we make it 3
+  days?". A missed match is safe: the tool refuses and the model asks.
+- All three trip tools are only offered on trip-scoped turns.
 - search_destination_knowledge raises `UnknownDestinationError` for a
   destination outside `KNOWN_DESTINATIONS` (defined once in
   `app/destinations.py`, shared across tools — not redefined per tool).
@@ -59,11 +77,17 @@ reasoning over tools, for destinations the user is actively planning
 - Each turn re-hydrates a compact summary of trip state into context,
   not the full conversation.
 - `run_agent(..., trip_id=...)` does this: injects the trip's compact
-  summary (`app/services/trip_context.py::trip_summary()`) plus its
-  prior chat history (`chat_messages` table,
-  `app/repositories/chat_history_repo.py`) into context, then persists
-  this turn's user/assistant messages after replying. Without `trip_id`
-  it's a single stateless turn, unchanged from before.
+  summary (`app/services/trip_context.py::trip_summary()`, including an
+  outline of saved itinerary days) plus its prior chat history
+  (`chat_messages` table, `app/repositories/chat_history_repo.py`) into
+  context, then persists this turn's user/assistant messages after
+  replying. Without `trip_id` it's a single stateless turn, unchanged
+  from before.
+- Order matters: the trip summary and itinerary rules go *after* the
+  replayed history, right before the new user message. History stores
+  only final text (no tool calls), and with the rules placed first the
+  local model imitated past "I've updated day 3" replies instead of
+  calling save_itinerary_day.
 
 ## Tool error handling
 - Tools return structured results or a typed error — never silent failure.

@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ItineraryPanel } from "./components/ItineraryPanel";
 import { Sidebar } from "./components/Sidebar";
-import type { Trip } from "./lib/types";
+import type { ItineraryDay, Trip } from "./lib/types";
 
 type Message = {
   role: "user" | "assistant" | "error";
@@ -34,6 +34,28 @@ export default function Home() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [tripsLoading, setTripsLoading] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
+  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
+
+  async function loadItinerary(tripId: number) {
+    try {
+      const res = await fetch(`${API_URL}/trips/${tripId}/itinerary`);
+      if (!res.ok) return;
+      setItinerary(await res.json());
+    } catch {
+      // Keep whatever's shown rather than blanking the panel on a blip.
+    }
+  }
+
+  async function refreshTrip(tripId: number) {
+    try {
+      const res = await fetch(`${API_URL}/trips/${tripId}`);
+      if (!res.ok) return;
+      const updated: Trip = await res.json();
+      setTrips((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    } catch {
+      // Stale dates in the sidebar aren't worth an error message.
+    }
+  }
 
   useEffect(() => {
     fetch(`${API_URL}/trips`)
@@ -46,6 +68,8 @@ export default function Home() {
   async function selectTrip(id: number) {
     setSelectedTripId(id);
     setMessages([]);
+    setItinerary([]);
+    loadItinerary(id);
     try {
       const res = await fetch(`${API_URL}/trips/${id}/messages`);
       if (!res.ok) return;
@@ -73,6 +97,7 @@ export default function Home() {
       setTrips((prev) => [created, ...prev]);
       setSelectedTripId(created.id);
       setMessages([]);
+      setItinerary([]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -103,6 +128,11 @@ export default function Home() {
 
       const data = await res.json();
       setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+      // The agent may have changed itinerary days or trip dates this turn.
+      if (selectedTripId !== null) {
+        loadItinerary(selectedTripId);
+        refreshTrip(selectedTripId);
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -224,7 +254,7 @@ export default function Home() {
         </div>
       </main>
 
-      <ItineraryPanel />
+      <ItineraryPanel hasTrip={selectedTripId !== null} days={itinerary} />
     </div>
   );
 }

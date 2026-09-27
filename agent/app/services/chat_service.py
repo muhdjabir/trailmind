@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import json
+import re
 
 import psycopg
 
@@ -20,14 +21,25 @@ from app.embeddings import EmbeddingError
 from app.llm import LLMClient, OllamaLLMClient
 from app.open_meteo import OpenMeteoError
 from app.repositories.chat_history_repo import append_message, list_messages
+from app.repositories.itinerary_repo import list_days
 from app.repositories.trips_repo import get_trip
 from app.repositories.vector_store_repo import VectorStoreError
+from app.services.itinerary_service import (
+    InvalidItineraryDayError,
+    InvalidTripDatesError,
+    change_trip_dates,
+    delete_itinerary_day,
+    save_itinerary_day,
+    trip_length,
+)
 from app.services.knowledge_service import search_destination_knowledge
 from app.services.trip_context import trip_summary
 from app.services.weather_service import get_weather
 from app.services.web_search_service import TavilyError, search_web
 
-MAX_TOOL_ROUNDS = 3
+# Sized for planning a whole trip in one turn: the local model tends to
+# call save_itinerary_day once per round rather than batching.
+MAX_TOOL_ROUNDS = 8
 
 SYSTEM_PROMPT = (
     "You are trailmind, a well-traveled friend helping someone plan a trip. "
@@ -62,6 +74,36 @@ SYSTEM_PROMPT = (
     "result tells you which one it is ('forecast' vs 'historical_average'); "
     "say so plainly rather than presenting a historical average as if it "
     "were today's forecast."
+)
+
+ITINERARY_PROMPT = (
+    "The itinerary and trip dates only change when you call "
+    "save_itinerary_day, delete_itinerary_day or update_trip_dates. Never "
+    "say you've added, updated, removed, extended or saved anything unless "
+    "you called the matching tool in this turn and it succeeded - earlier "
+    "messages in this conversation that mention updates don't show their "
+    "tool calls, so don't take them as a pattern of just saying it.\n\n"
+    "You can write to this trip's itinerary with save_itinerary_day - one "
+    "call per day, and a full plan means a call for every day of the trip, "
+    "not just some of them. When you propose a day-by-day plan, or the user asks to "
+    "add/change something on a specific day, save it right away rather than "
+    "asking first, then briefly mention in your reply that it's on their "
+    "itinerary. Each call replaces that whole day, so when editing a day "
+    "that already has a plan (see 'Itinerary so far' above), resend its "
+    "existing items along with the change. Items are short labels shown "
+    "side by side in a compact itinerary card - 2 to 5 words each, like "
+    "'Train 09:10', 'Pena Palace', 'Dinner in Alfama' - never full "
+    "sentences, and no 'Morning:'/'Afternoon:' prefixes. Put any longer "
+    "explanation in your chat reply instead.\n\n"
+    "To make the trip longer or shorter, or move it, call update_trip_dates "
+    "first (e.g. adding a day 6 to a 5-day trip means extending the end "
+    "date by one day, then saving day 6). delete_itinerary_day clears a "
+    "single day and does not renumber the others. To shorten the trip when "
+    "the user has said to drop what falls off the end, call "
+    "update_trip_dates once with drop_days_past_end=true - no separate "
+    "deletes needed - and tell the user which days were dropped. If they "
+    "haven't said to drop those days, leave it false: the tool refuses "
+    "and you should ask them first."
 )
 
 SEARCH_KNOWLEDGE_SCHEMA = {
@@ -160,7 +202,96 @@ SEARCH_WEB_SCHEMA = {
     },
 }
 
+SAVE_ITINERARY_DAY_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "save_itinerary_day",
+        "description": (
+            "Save one day of the current trip's itinerary, replacing whatever "
+            "that day had before."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "integer",
+                    "description": "Day number within the trip, starting at 1.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Short headline for the day, e.g. 'Sintra day trip'.",
+                },
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Short 2-5 word labels, not sentences, e.g. "
+                        "['Train 09:10', 'Pena Palace', 'Dinner in Alfama']."
+                    ),
+                },
+            },
+            "required": ["day", "title", "items"],
+        },
+    },
+}
+
+DELETE_ITINERARY_DAY_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "delete_itinerary_day",
+        "description": (
+            "Clear one day of the current trip's itinerary. Other days keep "
+            "their day numbers."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "integer",
+                    "description": "Day number to clear, starting at 1.",
+                },
+            },
+            "required": ["day"],
+        },
+    },
+}
+
+UPDATE_TRIP_DATES_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "update_trip_dates",
+        "description": (
+            "Set or change the current trip's start and end dates - to extend, "
+            "shorten or move the trip. Refuses to shorten it while days past "
+            "the new end still have saved plans, unless drop_days_past_end is true."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "YYYY-MM-DD."},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD, inclusive."},
+                "drop_days_past_end": {
+                    "type": "boolean",
+                    "description": (
+                        "Set true only when the user has explicitly said to drop "
+                        "the days that fall past the new end - they're deleted in "
+                        "the same call. Leave false otherwise."
+                    ),
+                },
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
+}
+
 TOOL_SCHEMAS = [SEARCH_KNOWLEDGE_SCHEMA, GET_WEATHER_SCHEMA, SEARCH_WEB_SCHEMA]
+# Only offered when the turn belongs to a trip - there's nothing to write to otherwise.
+TRIP_TOOL_SCHEMAS = TOOL_SCHEMAS + [
+    SAVE_ITINERARY_DAY_SCHEMA,
+    DELETE_ITINERARY_DAY_SCHEMA,
+    UPDATE_TRIP_DATES_SCHEMA,
+]
+TRIP_TOOL_NAMES = {"save_itinerary_day", "delete_itinerary_day", "update_trip_dates"}
 
 
 def _run_search_destination_knowledge(arguments: dict, conn: psycopg.Connection | None) -> dict:
@@ -218,13 +349,109 @@ def _run_search_web(arguments: dict) -> dict:
         return {"error": f"web search temporarily unavailable: {e}"}
 
 
-def _run_tool(name: str, arguments: dict, conn: psycopg.Connection | None) -> dict:
+def _save_itinerary_day(
+    arguments: dict, conn: psycopg.Connection, trip_id: int, user_message: str
+) -> dict:
+    saved = save_itinerary_day(
+        conn,
+        trip_id,
+        day=arguments.get("day"),
+        title=arguments.get("title", ""),
+        items=arguments.get("items", []),
+    )
+    return {"saved": True, "day": saved.day_number, **saved.plan}
+
+
+def _delete_itinerary_day(
+    arguments: dict, conn: psycopg.Connection, trip_id: int, user_message: str
+) -> dict:
+    day = arguments.get("day")
+    delete_itinerary_day(conn, trip_id, day)
+    return {"deleted": True, "day": day}
+
+
+_DROP_INTENT = re.compile(
+    r"\b(drop|dropp\w*|remove\w*|delete\w*|cut|get rid|scrap\w*|ditch\w*|lose)\b", re.IGNORECASE
+)
+
+
+def _update_trip_dates(
+    arguments: dict, conn: psycopg.Connection, trip_id: int, user_message: str
+) -> dict:
+    try:
+        start_date = datetime.date.fromisoformat(arguments.get("start_date", ""))
+        end_date = datetime.date.fromisoformat(arguments.get("end_date", ""))
+    except ValueError as e:
+        raise InvalidTripDatesError(f"invalid date - expected YYYY-MM-DD: {e}") from e
+
+    wants_drop = arguments.get("drop_days_past_end") is True
+    # Enforced here, not left to the prompt: live, gemma4 set the flag for a
+    # plain "can we make the trip 3 days?" and deleted saved days. Missing a
+    # real request is safe - the tool refuses and the model asks instead.
+    drop_allowed = wants_drop and bool(_DROP_INTENT.search(user_message))
+    try:
+        trip, dropped = change_trip_dates(
+            conn, trip_id, start_date, end_date, drop_days_past_end=drop_allowed
+        )
+    except InvalidTripDatesError as e:
+        if wants_drop and not drop_allowed:
+            raise InvalidTripDatesError(
+                f"{e}. drop_days_past_end was ignored because the user hasn't "
+                "explicitly said to drop those days - ask them to confirm first, "
+                "don't retry"
+            ) from e
+        raise
+    return {
+        "updated": True,
+        "start_date": str(trip.start_date),
+        "end_date": str(trip.end_date),
+        "days": trip_length(trip),
+        "dropped_days": dropped,
+    }
+
+
+_TRIP_TOOL_RUNNERS = {
+    "save_itinerary_day": _save_itinerary_day,
+    "delete_itinerary_day": _delete_itinerary_day,
+    "update_trip_dates": _update_trip_dates,
+}
+
+
+def _run_trip_tool(
+    name: str,
+    arguments: dict,
+    conn: psycopg.Connection | None,
+    trip_id: int | None,
+    user_message: str,
+) -> dict:
+    if trip_id is None:
+        return {"error": "no trip is selected, so there's no itinerary to change"}
+    try:
+        return _TRIP_TOOL_RUNNERS[name](arguments, conn, trip_id, user_message)
+    except (InvalidItineraryDayError, InvalidTripDatesError) as e:
+        return {"error": str(e)}
+    except psycopg.Error as e:
+        # Otherwise the aborted transaction would also break persisting
+        # this turn's chat messages afterwards.
+        conn.rollback()
+        return {"error": f"itinerary temporarily unavailable: {e}"}
+
+
+def _run_tool(
+    name: str,
+    arguments: dict,
+    conn: psycopg.Connection | None,
+    trip_id: int | None = None,
+    user_message: str = "",
+) -> dict:
     if name == "search_destination_knowledge":
         return _run_search_destination_knowledge(arguments, conn)
     if name == "get_weather":
         return _run_get_weather(arguments)
     if name == "search_web":
         return _run_search_web(arguments)
+    if name in TRIP_TOOL_NAMES:
+        return _run_trip_tool(name, arguments, conn, trip_id, user_message)
     return {"error": f"unknown tool '{name}'"}
 
 
@@ -255,23 +482,48 @@ def run_agent(
         {"role": "system", "content": f"Today's date is {datetime.date.today().isoformat()}."},
     ]
 
+    tools = TOOL_SCHEMAS
     if trip_id is not None:
         trip = get_trip(conn, trip_id)
-        messages.append(
-            {"role": "system", "content": f"Current trip state: {trip_summary(trip)}"}
-        )
         for past in list_messages(conn, trip_id):
             messages.append({"role": past.role, "content": past.content})
+        # After the history, not before: replayed replies like "I've updated
+        # day 3" carry no tool calls, and with the itinerary rules buried
+        # above them the local model imitated those and skipped saving.
+        messages.append(
+            {
+                "role": "system",
+                "content": f"Current trip state: {trip_summary(trip, list_days(conn, trip_id))}",
+            }
+        )
+        messages.append({"role": "system", "content": ITINERARY_PROMPT})
+        tools = TRIP_TOOL_SCHEMAS
 
     messages.append({"role": "user", "content": user_message})
 
     reply = None
+    # Text the model writes alongside tool calls is often the substance of
+    # the answer (e.g. introducing a plan while saving its days), with the
+    # final turn just a short follow-up - so it's kept, not discarded.
+    interim_text: list[str] = []
     for _ in range(max_tool_rounds):
-        turn = llm.chat(messages, tools=TOOL_SCHEMAS)
+        turn = llm.chat(messages, tools=tools)
 
         if not turn.tool_calls:
-            reply = turn.content or ""
+            final = (turn.content or "").strip()
+            if not final and not interim_text:
+                # gemma4 occasionally returns a completely empty turn; asking
+                # again (the model samples) beats showing the user a blank reply.
+                continue
+            so_far = "\n\n".join(interim_text)
+            # The model sometimes repeats its closing line in both turns.
+            if final and final not in so_far:
+                interim_text.append(final)
+            reply = "\n\n".join(interim_text)
             break
+
+        if turn.content and turn.content.strip():
+            interim_text.append(turn.content.strip())
 
         messages.append(
             {
@@ -284,7 +536,7 @@ def run_agent(
             }
         )
         for tc in turn.tool_calls:
-            result = _run_tool(tc.name, tc.arguments, conn)
+            result = _run_tool(tc.name, tc.arguments, conn, trip_id, user_message)
             messages.append(
                 {"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)}
             )

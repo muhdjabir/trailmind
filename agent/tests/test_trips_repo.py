@@ -2,7 +2,13 @@ import datetime
 
 import pytest
 
-from app.repositories.trips_repo import TripNotFoundError, create_trip, get_trip, list_trips
+from app.repositories.trips_repo import (
+    TripNotFoundError,
+    create_trip,
+    get_trip,
+    list_trips,
+    update_trip_dates,
+)
 from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
 pytestmark = pytest.mark.integration
@@ -86,3 +92,19 @@ def test_get_trip_returns_matching_trip(conn) -> None:
 def test_get_trip_raises_not_found_for_missing_id(conn) -> None:
     with pytest.raises(TripNotFoundError):
         get_trip(conn, 9_999_999)
+
+
+def test_update_trip_dates_persists_and_bumps_updated_at(conn) -> None:
+    trip = create_trip(conn, name=f"{TEST_NAME_PREFIX} dates")
+
+    updated = update_trip_dates(conn, trip.id, datetime.date(2026, 11, 6), datetime.date(2026, 11, 10))
+
+    assert updated.start_date == datetime.date(2026, 11, 6)
+    assert updated.end_date == datetime.date(2026, 11, 10)
+    assert updated.updated_at >= trip.updated_at
+    assert get_trip(conn, trip.id).end_date == datetime.date(2026, 11, 10)
+
+
+def test_update_trip_dates_raises_not_found_for_missing_id(conn) -> None:
+    with pytest.raises(TripNotFoundError):
+        update_trip_dates(conn, 99999999, datetime.date(2026, 1, 1), datetime.date(2026, 1, 2))

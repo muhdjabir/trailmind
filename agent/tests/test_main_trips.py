@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.repositories.chat_history_repo import append_message
+from app.repositories.itinerary_repo import upsert_day
 from app.repositories.vector_store_repo import VectorStoreError, get_connection
 
 pytestmark = pytest.mark.integration
@@ -80,3 +81,35 @@ def test_list_trip_messages_empty_for_trip_with_no_history() -> None:
 def test_list_trip_messages_returns_404_for_unknown_trip() -> None:
     response = client.get("/trips/9999999/messages")
     assert response.status_code == 404
+
+
+def test_itinerary_returns_saved_days_with_derived_dates(_cleanup) -> None:
+    created = client.post(
+        "/trips",
+        json={"name": f"{TEST_NAME_PREFIX} itinerary", "start_date": "2026-10-12",
+              "end_date": "2026-10-17"},
+    ).json()
+    upsert_day(_cleanup, created["id"], 4, {"title": "Train to Porto", "items": ["Alfa Pendular 10:39"]})
+    upsert_day(_cleanup, created["id"], 1, {"title": "Arrive Lisbon", "items": []})
+
+    response = client.get(f"/trips/{created['id']}/itinerary")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [d["day_number"] for d in body] == [1, 4]
+    assert body[1]["date"] == "2026-10-15"
+    assert body[1]["title"] == "Train to Porto"
+    assert body[1]["items"] == ["Alfa Pendular 10:39"]
+
+
+def test_itinerary_date_null_when_trip_dates_open(_cleanup) -> None:
+    created = client.post("/trips", json={"name": f"{TEST_NAME_PREFIX} open dates"}).json()
+    upsert_day(_cleanup, created["id"], 1, {"title": "Somewhere", "items": []})
+
+    body = client.get(f"/trips/{created['id']}/itinerary").json()
+
+    assert body[0]["date"] is None
+
+
+def test_itinerary_returns_404_for_unknown_trip() -> None:
+    assert client.get("/trips/9999999/itinerary").status_code == 404

@@ -72,10 +72,10 @@ CREATE TABLE IF NOT EXISTS itinerary_days (
     id BIGSERIAL PRIMARY KEY,
     trip_id BIGINT NOT NULL REFERENCES trips (id) ON DELETE CASCADE,
     day_number INT NOT NULL,
-    -- Kept as a JSONB blob for now rather than a normalized shape:
-    -- the actual structure of a day's plan isn't defined until the
-    -- tools that populate it (steps 17-20: weather/flights/hotels/
-    -- save_itinerary_day) exist. Revisit once that shape is known.
+    -- { "title": str, "items": [str] } - validated in
+    -- app/services/itinerary_service.py, not the DB. Still JSONB so
+    -- structured items (costs/durations for step 22a's stat cards) can be
+    -- added once the flights/hotels tools exist, without a migration.
     plan JSONB NOT NULL DEFAULT '{}',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (trip_id, day_number)
